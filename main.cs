@@ -158,6 +158,16 @@ namespace AnseremPackage
             return;
         }
 
+        public void SetSecondLineSupport(Entity case, string caseCategory)
+        {
+            return;
+        }
+
+        public void SetThirdLineSupport(Entity case, string caseCategory)
+        {
+            return;
+        }
+
         public void EisPath(string email, string isOlpFirstStage)
         {
             var response = SendEisRequest(email);
@@ -226,6 +236,16 @@ namespace AnseremPackage
         }
 
         public void FirstStage()
+        {
+
+        }
+
+        public void SendBookAutoreply()
+        {
+
+        }
+
+        public void SetAutonotification(object activity)
         {
 
         }
@@ -320,24 +340,135 @@ namespace AnseremPackage
             }
         }
 
-        public void goto4()
+        // DONE
+        public void goto4(bool extraSG, Guid selectedSGId, object case)
         {
+            // Дежурная ГО 2 линия поддержки
+            if (extraSG && isVipClient)
+            {
+                selectedSGId = "OLP:ГО Дежурная группа";
+                goto5(selectedSGId);
+            }
 
+            // Основная клиентская/ВИП Платформа
+            if (!extraSG)
+            {
+                goto5(selectedSGId);
+            }
+
+            // Общая 1 линия поддержки
+            if (extraSG && isVipClient)
+            {
+                selectedSGId = "OLP:ГО Общая 1 линия поддержки";
+                UpdateCaseToFirstLineSupport(case);
+                goto7();
+            }
         }
         
-        public void goto5()
+        // DONE
+        public void goto5(bool extraSG, Guid selectedSGId, object activity)
         {
-
+            // TODO Найти ГО дежурную из кому/копии по графику работы
+        
+            Guid serviceGroupId = GetExtraSGFromAndCopyBasedOnTimeTable();
+            // TODO
+            extraSG =  UnimplementedMethod();
+        
+            // дежурная ГО найдена или есть основная почта
+            if (selectedSGId)
+            {
+                goto6();
+            }
+            else
+            {
+                // TODO Найти основную ГО для контакта по компаниям
+            
+                // TODO
+                bool isDutyGroup = UnimplementedMethod();
+            
+                // TODO
+                serviceGroupId  = UnimplementedMethod();
+            
+                if (selectedSGId == Guid.Empty)
+                {
+                    selectedSGId = "Ид. экстра группы из кому/копии";
+                    SendBookAutoreply();
+                    SetAutonotification(activity);
+                    goto6();
+                }
+                else
+                {
+                    // [#Ид. экстра группы из кому/копии#] ... extraSG or selectedSGId?
+                    selectedSGId = extraSG;
+                    SendBookAutoreply();
+                }
+            }
         }
         
-        public void goto6()
+        // DONE
+        public void goto6(Guid selectedSG, object case, object activity, bool isOlpFirstStage, Guid selectedSG)
         {
+            object SG = GetSG(selectedSG);
 
+            if (SG.type == "ВИП Платформа")
+            {
+                var priority = "Важно";
+                SetSecondLineSupport();
+                goto7();
+            }
+
+            if (SG.isClientVip)
+            {
+                var priority = "Важно";
+                if (SG.vipDistribution)
+                {
+                    var thirdLineSupport = GetThirdLineSupport();
+                    if (thirdLineSupport)
+                    {
+                        SetThirdLineSupport(case);
+                        goto7();
+                    }
+                }
+                SetSecondLineSupport(case);
+                goto7();
+            }
+
+            var firstLineSupport = GetFirstLineSupport();
+
+            if (activity.priority == "Высокий")
+            {
+                var priority = "Важно";
+            }
+
+            if (firstLineSupport)
+            {
+                SetSecondLineSupport(case);
+                goto7();
+            }
+            if (!firstLineSupport && isOlpFirstStage)
+            {
+                selectedSG = "OLP:ГО Общая 1 линия поддержки";
+                SetFirstLineSupport();
+                goto7();
+            }
         }
         
-        public void goto7()
+        // DONE
+        public void goto7(object EIS)
         {
+            if (EIS.code == 200)
+            {
+                return;
+            }
 
+            if (EIS.orderNumbCheck != Guid.Empty)
+            {
+               // TODO Собрать услуги для добавления
+               
+               // TODO Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
+            }
+
+            return;
         }
 
     }
