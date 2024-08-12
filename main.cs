@@ -1,99 +1,97 @@
+using System;
+using System.Collections.Generic;
+using Common.Logging;
 using BPMSoft.Configuration;
 using BPMSoft.Core;
 using BPMSoft.Core.DB;
 using BPMSoft.Core.Entities;
 using BPMSoft.Core.Entities.Events;
-using Common.Logging;
-using System;
-using System.Collections.Generic;
 
 
 namespace AnseremPackage
 {
     [EntityEventListener(SchemaName = nameof(Case))]
-    public class ProcessingEmailRequestListener : BaseEntityEventListener
+    private class ProcessingEmailRequestListener : BaseEntityEventListener
     { 
 
         private Entity Entity { get; set; }
   
         private UserConnection UserConnection { get; set; }
 
+        private bool isOlpFirstStage = GetOlpFirstStage();
+
+        private object _case { get; set; }
+        private string caseCategory { get; set; }
+        private string holding { get; set; }
+        private string account { get; set; }
+        private object contact { get; set; }
+        private object activity { get; set; }
+        private Guid mainServiceGroup { get; set; }
+        private Guid extraServiceGroup { get; set; }
+        private object eis { get; set; }
+        private object account { get; set; }
+        private Guid accountId { get; set; }
+        private Guid holding { get; set; }
+        
+
         public override void OnInserting(object sender, EntityAfterEventArgs e)
         {
             base.OnInserting(sender, e);
-            case = (Entity)sender; 
-            ProcessEmailRequest(case.GetColumnValue("Id"));
+            _case = (Entity)sender;
+            ProcessEmailRequest();
         }
 
-        public void ProcessEmailRequest(string caseId)
+        private void ProcessEmailRequest()
         {
-            isOlpFirstStage = SysSettings.Get("OLP: Этап 1");
-            string caseCategory;
-            string holding;
-            string account;
-            
             // Чтение карточки контакта из обращения
-            var contact = ReadContactFromCase(case);
+            contact = ReadContactFromCase();
             
             // Нет (СПАМ) - 2 ЭТАП
             if (contact.type == "Клиент не определён/Спам")
             {
                 // Спам на обращении + 1 линия поддержки
-                UpdateCaseToFirstLineSupport(case);
+                UpdateCaseToFirstLineSupport();
                 return;
             }
 
             // email родительской активности
-            var activity = GetParentActivityFromCase(case);
+            activity = GetParentActivityFromCase();
 
             /**
             * Чтение всех основных групп для выделения подходящей основной группы
             * Найти основную группу по email в кому/копия
+            * TODO Enum: ServiceGroupType
             */
-            var mainServiceGroup = SortMainServiceGroupByEmailAndCopies(
-                GetMainServiceGroup(), activity.Email, activity.Copy);
+            mainServiceGroup = SortServiceGroupByEmailAndCopies(GetServiceGroup(ServiceGroupType.Main));
             
             /**
             * Чтение дежурной группы
             * Найти дежурную группу по email в кому/копия
+            * TODO Enum: ServiceGroupType
             */
-            var extraServiceGroup = SortExtraServiceGroupByEmailAndCopies(
-                GetExtraServiceGroup(), activity.Email, activity.Copy);
-
-            // Получить Email контакта и домен
-            var email = GetEmailFromActivity(activity);
-            var domain = GetDomainFromActivity(activity);
-            var theme = GetThemeFromActivity(activity);
-            var siburTheme = GetSiburThemeFromActivity(activity);
-            var body = GetBodyFromActivity(activity);
+            extraServiceGroup = SortServiceGroupByEmailAndCopies(GetServiceGroup(ServiceGroupType.Extra));
             
             /**
             * Добавить TRAVEL
             * Поставить отменено на всех отмененных тревел обращениях
-            */
-            if (!string.IsNullOrEmpty(theme))
-            {
-                SetTravelParameter(theme, body);
-            }
+            */  
+            SetTravelParameter();
             
             /**
             * Добавить Релокация - СИБУР
             * Поставить отменено на всех отмененных тревел обращениях - Копия
             */
-            if (!string.IsNullOrEmpty(siburTheme))
-            { 
-                SetRelocationParameter(siburTheme, body);
-            }
-
+            SetSiburParameter();
+            
             // Да (Сотрудник) - 2 ЭТАП
-            if (contact.Company != Guid.Empty && !isOlpFirstStage && (contact.type == "Сотрудник" || contact.type == "Поставщик"))
+            if (contact.company != Guid.Empty && !isOlpFirstStage && (contact.type == "Сотрудник" || contact.type == "Поставщик"))
             {
                 caseCategory = "Сотрудник/Поставщик";
                 /**
                 *  Категория (Сотрудник/Поставщик) -2 этап
                 * Выставить 1 линию поддержки
                 */
-                SetFirstLineSupport(case, caseCategory);
+                SetFirstLineSupport();
                 return;
             }
 
@@ -105,7 +103,7 @@ namespace AnseremPackage
             }
 
             // Нет (Новый)
-            if (contact.Company == Guid.Empty || contact.type == Guid.Empty)
+            if (contact.company == Guid.Empty || contact.type == Guid.Empty)
             {
                 account = GetAccountFromAccountCommutication(GetAccountCommunication());
 
@@ -113,147 +111,110 @@ namespace AnseremPackage
                 if (account != Guid.Empty && account.Type == "Поставщик")
                 {
                     caseCategory = "Поставщик";
-                    SetContactType(contact, "Поставщик");
+                    SetContactType();
                     if (isOlpFirstStage)
                     {
-                        // TODO Fill in parametrs
                         FirstStage();
                     }
                     else
                     {
-                        SetFirstLineSupport(case, caseCategory);
+                        SetFirstLineSupport();
                     }
                 }
 
                 // Да (Аэроклуб)
-                if (account != Guid.Empty && account.Type == "Наша компания")
+                if (account != Guid.Empty && account.type == "Наша компания")
                 {
                     caseCategory = "Наша компания";
-                    SetAeroclubOnContact(contact, "Наша компания");
+                    SetAeroclubOnContact();
                     if (isOlpFirstStage)
                     {
-                        // TODO Fill in parametrs
                         FirstStage();
                     }
                     else
                     {
-                        SetFirstLineSupport(case, caseCategory);
+                        SetFirstLineSupport();
                     }
                 }
 
                 // Да (Компания/Холдинг) или потенциальный СПАМ
-                EisPath(email);
+                EisPath();
             }
 
             // Да (Клиент, СПАМ)
-            if (contact.Company != Guid.Empty && (contact.type == "Клиент" || contact.type == "Клиент не определен/Спам"))
+            if (contact.company != Guid.Empty && (contact.type == "Клиент" || contact.type == "Клиент не определен/Спам"))
             {
-                EisPath(email);
+                EisPath();
             }
         }
 
-        public void SetFirstLineSupport(Entity case, string caseCategory)
+        private void EisPath()
         {
-            // TODO Выставить 1 линию поддержки + Завершение БП
-            return;
-        }
-
-        public void SetSecondLineSupport(Entity case, string caseCategory)
-        {
-            return;
-        }
-
-        public void SetThirdLineSupport(Entity case, string caseCategory)
-        {
-            return;
-        }
-
-        public void EisPath(string email, string isOlpFirstStage)
-        {
-            var response = SendEisRequest(email);
-            string caseCategory;
+            eis = SendEisRequest();
             // Да
-            if (response.Code == 200 || (response.Code == 200 && contact.AeroclubCheck))
+            if (eis.code == 200 || (eis.code == 200 && contact.aeroclubCheck))
             {
-                /** 
-                * Найти данные компании, привязанной к контакту
-                * Заполнение ид. контакта
-                * Обновление добавление почт и телефонов контакта
-                * Актуализировать данные контакта + тип клиент
-                * Выставить холдинг компании контакта
-                */
+                account = GetAccountFromEisResponse();
+                
+                accountId = account.id;
 
-                // TODO Proper naming
+                RefreshEmails();
+
+                RefreshPhones();
+
+                RefreshContact();
+
+                SetHolding();
+
                 // Чтение карточки контакта после обновления
-                Method();
+                ReadContactAfterRefreshing();
             }
 
             // Нет по домену и нет по ЕИС и (пустой тип или СПАМ)
-            if (response.Code == 200 && contact.Account == Guid.Empty && (contact.type == Guid.Empty || contact.type == "Клиент не определен/Спам"))
+            if (eis.code == 200 && contact.account == Guid.Empty && (contact.type == Guid.Empty || contact.type == "Клиент не определен/Спам"))
             {
                 // категория СПАМ
                 caseCategory = "Клиент не определен/Спам";
                 if (isOlpFirstStage)
                 {
-                    SetSpamOnCase(caseCategory, urgency, importancy);
-                    // TODO Fill in parametrs
+                    SetSpamOnCase();
                     FirstStage();
                 }
                 else
                 {
-                    SetSpamOnCase(caseCategory, urgency, importancy);   
+                    SetSpamOnCase();   
                     return;
                 }
             }
 
             // Нет по ЕИС
             // Да
-            if (contact.Company != Guid.Empty)
+            if (contact.company != Guid.Empty)
             {
                 // Актуализировать тип контакта + Email 
-
-                // Найти данные компании привязанной к контакту ненайденного в ЕИС
-
-                // Выставить холдинг компании контакта
-
-                // TODO Proper naming
-                // Чтение карточки контакта после обновления
-                Method();
+                RefreshContactCompanyAndEmail();
             }
             // Нет
-            if (contact.Company == Guid.Empty)
+            else
             {
                 // Актуализировать компанию контакта + Email
-
-                // Найти данные компании привязанной к контакту ненайденного в ЕИС
-
-                // Выставить холдинг компании контакта
-
-                // TODO Proper naming
-                // Чтение карточки контакта после обновления
-                Method();
+                RefreshContactTypeAndEmail();
             }
-        }
 
-        public void FirstStage()
-        {
+             // Найти данные компании привязанной к контакту ненайденного в ЕИС
+            contact = ReadContactBindedToEis();
+            
+            // Выставить холдинг компании контакта
+            holding = contact.holding;
 
-        }
-
-        public void SendBookAutoreply()
-        {
-
-        }
-
-        public void SetAutonotification(object activity)
-        {
-
+            // Чтение карточки контакта после обновления
+            ReadContactAfterRefreshing();
         }
 
         /** 
         * Чтение карточки контакта после обновления
         */
-        public void Method()
+        private void ReadContactAfterRefreshing()
         {
             /**
             * Выставить признак ВИП Платформы
@@ -341,7 +302,7 @@ namespace AnseremPackage
         }
 
         // DONE
-        public void goto4(bool extraSG, Guid selectedSGId, object case)
+        private void goto4(bool extraSG, Guid selectedSGId, object case)
         {
             // Дежурная ГО 2 линия поддержки
             if (extraSG && isVipClient)
@@ -366,7 +327,7 @@ namespace AnseremPackage
         }
         
         // DONE
-        public void goto5(bool extraSG, Guid selectedSGId, object activity)
+        private void goto5(bool extraSG, Guid selectedSGId, object activity)
         {
             // TODO Найти ГО дежурную из кому/копии по графику работы
         
@@ -406,7 +367,7 @@ namespace AnseremPackage
         }
         
         // DONE
-        public void goto6(Guid selectedSG, object case, object activity, bool isOlpFirstStage, Guid selectedSG)
+        private void goto6(Guid selectedSG, object case, object activity, bool isOlpFirstStage, Guid selectedSG)
         {
             object SG = GetSG(selectedSG);
 
@@ -454,7 +415,7 @@ namespace AnseremPackage
         }
         
         // DONE
-        public void goto7(object EIS)
+        private void goto7(object EIS)
         {
             if (EIS.code == 200)
             {
@@ -471,5 +432,175 @@ namespace AnseremPackage
             return;
         }
 
+        private bool GetOlpFirstStage()
+        {
+            //TODO
+        }
+
+        private object ReadContactFromCase()
+        {
+            // TODO            
+        }
+
+        private void UpdateCaseToFirstLineSupport()
+        {
+            // TODO
+        }
+
+        private object GetParentActivityFromCase()
+        {
+            // TODO
+        }
+
+        private List<Guid> GetServiceGroup(ServiceGroupType type)
+        {
+            // TODO
+        }
+
+        private Guid SortServiceGroupByEmailAndCopies()
+        {
+            // TODO
+        }
+
+        private void SetTravelParameter()
+        {
+            if (!string.IsNullOrEmpty(activity.theme))
+            {
+                // TODO
+            }
+        }
+
+        private void SetSiburParameter()
+        {
+            if (!string.IsNullOrEmpty(siburTheme))
+            {
+               // TODO  
+            }
+        }
+
+        private List<object> GetAccountCommunication()
+        {
+            // TODO
+        }
+
+        private void GetAccountFromAccountCommutication()
+        {
+            // TODO
+        }
+
+        private void SetAeroclubOnContact()
+        {
+            // TODO    
+        }
+
+        private void SetSpamOnCase()
+        {
+            // TODO
+        }
+
+        private void SetFirstLineSupport()
+        {
+            // TODO Выставить 1 линию поддержки + Завершение БП
+            return;
+        }
+
+        private void SetSecondLineSupport()
+        {
+            // TODO
+            return;
+        }
+
+        private void SetThirdLineSupport()
+        {
+            // TODO
+            return;
+        }
+
+        private void FirstStage()
+        {
+            // TODO
+        }
+
+        private void SendBookAutoreply()
+        {
+            // TODO
+        }
+
+        private void SetAutonotification()
+        {
+            // TODO
+        }
+
+        private void SetContactType()
+        {
+            // TODO
+        }
+
+        private void SendEisRequest()
+        {
+            // TODO
+        }
+
+        private object GetAccountFromEisResponse()
+        {
+            // TODO
+        }
+
+        private void RefreshEmails()
+        {
+            // TODO
+        }
+
+        private void RefreshPhones()
+        {
+            // TODO
+        }
+
+        private void RefreshContact()
+        {
+            // TODO
+        }
+
+        private void RefreshContactCompanyAndEmail()
+        {
+            // TODO
+        }
+
+        private void ReadContactBindedToEis()
+        {
+            // TODO
+        }
+
+        private void method()
+        {
+            // TODO
+        }
+
+        private void method()
+        {
+            // TODO
+        }
+
+        private void method()
+        {
+            // TODO
+        }
+
+        private void method()
+        {
+            // TODO
+        }
+
+        private void method()
+        {
+            // TODO
+        }
+
+        private void method()
+        {
+            // TODO
+        }
+
     }
 }
+
