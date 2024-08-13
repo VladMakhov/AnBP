@@ -32,7 +32,9 @@ namespace AnseremPackage
         private object account { get; set; }
         private Guid accountId { get; set; }
         private Guid holding { get; set; }
-        
+        private bool clientVipPlatform { get; set; }
+        private bool clientVip { get; set; }
+        private Guid clientComponyId { get; set; }
 
         public override void OnInserting(object sender, EntityAfterEventArgs e)
         {
@@ -99,7 +101,7 @@ namespace AnseremPackage
             if (isOlpFirstStage && (contact.type == "Сотрудник" || contact.type == "Поставщик"))
             {
                 caseCategory = "Сотрудник/Поставщик";
-                FirstStage();
+                goto2();
             }
 
             // Нет (Новый)
@@ -114,7 +116,7 @@ namespace AnseremPackage
                     SetContactType();
                     if (isOlpFirstStage)
                     {
-                        FirstStage();
+                        goto2();
                     }
                     else
                     {
@@ -129,7 +131,7 @@ namespace AnseremPackage
                     SetAeroclubOnContact();
                     if (isOlpFirstStage)
                     {
-                        FirstStage();
+                        goto2();
                     }
                     else
                     {
@@ -178,7 +180,7 @@ namespace AnseremPackage
                 if (isOlpFirstStage)
                 {
                     SetSpamOnCase();
-                    FirstStage();
+                    goto2();
                 }
                 else
                 {
@@ -211,19 +213,24 @@ namespace AnseremPackage
             ReadContactAfterRefreshing();
         }
 
+        private void goto2()
+        {
+            ReadAccount();
+            SetupHolding();
+            ReadContactAfterRefreshing();
+        }
+
         /** 
         * Чтение карточки контакта после обновления
         */
         private void ReadContactAfterRefreshing()
         {
-            /**
-            * Выставить признак ВИП Платформы
-            * Выставить Признак ВИП
-            * Выставить параметр "Компания" в ЕИС 
-            * Добавить контрагента в Email
-            * */
 
-            mainServiceGroup = GetMainSG(company, vip);
+            ReadContactAfterRefreshingAndSetupParameters();
+
+            AddAccountToEmail();
+
+            GetMainServiceGroup();
 
             // Найдена ли группа по компании ВИП Платформа?
             // Этап 1
@@ -231,7 +238,7 @@ namespace AnseremPackage
             {
                 // TODO Параметры придумать надо
                 // Найти ГО основную по графику работы 
-                GetMainSgBasedOnTimetable();
+                GetMainServiceGroupBasedOnTimetable();
                 goto4();
             }
 
@@ -242,7 +249,7 @@ namespace AnseremPackage
                 if (!extraSG)
                 {
                     // TODO Параметры
-                    GetMainSgBasedOnTimetableOlpFirstStage();
+                    GetMainServiceGroupBasedOnTimetableOlpFirstStage();
                 }
 
                 // Какую ГО установить?
@@ -255,7 +262,7 @@ namespace AnseremPackage
                 {
                     // TODO Переделать под кастомные автоответы!
                     SendBookAutoreply();
-                    SetAutonotification(activity);
+                    SetAutonotification();
                     goto6();
                 }
 
@@ -272,7 +279,7 @@ namespace AnseremPackage
                     else
                     {
                         // Найти ГО дежурную по графику работы
-                        GetExtraSGBaseOnTimetable();
+                        GetExtraServiceGroupBaseOnTimetable();
 
                         if (selectedSGId && (!extraSG || contact.email.contains("NOREPLY@") || contact.email.contains("NO-REPLY@") || contact.email.contains("EDM@npk.team")))
                         {
@@ -301,37 +308,35 @@ namespace AnseremPackage
             }
         }
 
-        // DONE
-        private void goto4(bool extraSG, Guid selectedSGId, object case)
+        private void goto4()
         {
             // Дежурная ГО 2 линия поддержки
             if (extraSG && isVipClient)
             {
                 selectedSGId = "OLP:ГО Дежурная группа";
-                goto5(selectedSGId);
+                goto5();
             }
 
             // Основная клиентская/ВИП Платформа
             if (!extraSG)
             {
-                goto5(selectedSGId);
+                goto5();
             }
 
             // Общая 1 линия поддержки
             if (extraSG && isVipClient)
             {
                 selectedSGId = "OLP:ГО Общая 1 линия поддержки";
-                UpdateCaseToFirstLineSupport(case);
+                UpdateCaseToFirstLineSupport();
                 goto7();
             }
         }
         
-        // DONE
-        private void goto5(bool extraSG, Guid selectedSGId, object activity)
+        private void goto5()
         {
             // TODO Найти ГО дежурную из кому/копии по графику работы
         
-            Guid serviceGroupId = GetExtraSGFromAndCopyBasedOnTimeTable();
+            Guid serviceGroupId = GetExtraServiceGroupFromAndCopyBasedOnTimeTable();
             // TODO
             extraSG =  UnimplementedMethod();
         
@@ -366,7 +371,6 @@ namespace AnseremPackage
             }
         }
         
-        // DONE
         private void goto6(Guid selectedSG, object case, object activity, bool isOlpFirstStage, Guid selectedSG)
         {
             object SG = GetSG(selectedSG);
@@ -414,7 +418,6 @@ namespace AnseremPackage
             }
         }
         
-        // DONE
         private void goto7(object EIS)
         {
             if (EIS.code == 200)
@@ -516,11 +519,6 @@ namespace AnseremPackage
             return;
         }
 
-        private void FirstStage()
-        {
-            // TODO
-        }
-
         private void SendBookAutoreply()
         {
             // TODO
@@ -571,12 +569,52 @@ namespace AnseremPackage
             // TODO
         }
 
-        private void method()
+        private void ReadContactAfterRefreshingAndSetupParameters()
+        {
+            /**
+            * TODO
+            * Выставить признак ВИП Платформы
+            * Выставить Признак ВИП
+            * Выставить параметр "Компания" в ЕИС 
+            */
+        }
+
+        private void AddAccountToEmail()
         {
             // TODO
         }
 
-        private void method()
+        private void GetMainServiceGroup()
+        {
+            // TODO
+        }
+
+        private void GetMainServiceGroupBasedOnTimetable()
+        {
+            // TODO
+        }
+
+        private void GetMainServiceGroupBasedOnTimetableOlpFirstStage()
+        {
+            // TODO
+        }
+
+        private void GetExtraServiceGroupBaseOnTimetable()
+        {
+            // TODO
+        }
+
+        private void GetExtraServiceGroupFromAndCopyBasedOnTimeTable()
+        {
+            // TODO
+        }
+
+        private void ReadAccount()
+        {
+            // TODO
+        }
+
+        private void SetupHolding()
         {
             // TODO
         }
