@@ -234,7 +234,7 @@ namespace AnseremPackage
 
             // Найдена ли группа по компании ВИП Платформа?
             // Этап 1
-            if (!extraSG && !isOlpFirstStage)
+            if (!extraServiceGroup && !isOlpFirstStage)
             {
                 // TODO Параметры придумать надо
                 // Найти ГО основную по графику работы 
@@ -246,19 +246,19 @@ namespace AnseremPackage
             else if (isOlpFirstStage)
             {
                 // Есть ГО
-                if (!extraSG)
+                if (!extraServiceGroup)
                 {
                     // TODO Параметры
                     GetMainServiceGroupBasedOnTimetableOlpFirstStage();
                 }
 
                 // Какую ГО установить?
-                if (extraSGFromAndCopyId && extraSG && !mainSGFromAndCopyId)
+                if (extraServiceGroupFromAndCopyId && extraServiceGroup && !mainSGFromAndCopyId)
                 {
                     goto5();
                 }
 
-                else if (!extraSG)
+                else if (!extraServiceGroup)
                 {
                     // TODO Переделать под кастомные автоответы!
                     SendBookAutoreply();
@@ -266,13 +266,13 @@ namespace AnseremPackage
                     goto6();
                 }
 
-                else if (mainServiceGroup && extraSG)
+                else if (mainServiceGroup && extraServiceGroup)
                 {
-                    if (extraServiceGroup && extraSG)
+                    if (extraServiceGroup && extraServiceGroup)
                     {
                         goto5();
                     }
-                    else if (selectedSGId && !extraSG)
+                    else if (selectedServiceGroupId && !extraServiceGroup)
                     {
                         goto6();
                     }
@@ -281,11 +281,11 @@ namespace AnseremPackage
                         // Найти ГО дежурную по графику работы
                         GetExtraServiceGroupBaseOnTimetable();
 
-                        if (selectedSGId && (!extraSG || contact.email.contains("NOREPLY@") || contact.email.contains("NO-REPLY@") || contact.email.contains("EDM@npk.team")))
+                        if (selectedServiceGroupId && (!extraServiceGroup || contact.email.contains("NOREPLY@") || contact.email.contains("NO-REPLY@") || contact.email.contains("EDM@npk.team")))
                         {
                             goto6();
                         }
-                        else if (!selectedSGId && (!contact.email.contains("NOREPLY@") && !contact.email.contains("NO-REPLY@") && !contact.email.contains("EDM@npk.team")))
+                        else if (!selectedServiceGroupId && (!contact.email.contains("NOREPLY@") && !contact.email.contains("NO-REPLY@") && !contact.email.contains("EDM@npk.team")))
                         {
                             SendBookAutoreply();
                             SetAutonotification();
@@ -311,22 +311,22 @@ namespace AnseremPackage
         private void goto4()
         {
             // Дежурная ГО 2 линия поддержки
-            if (extraSG && isVipClient)
+            if (extraServiceGroup && isVipClient)
             {
-                selectedSGId = "OLP:ГО Дежурная группа";
+                selectedServiceGroupId = "OLP:ГО Дежурная группа";
                 goto5();
             }
 
             // Основная клиентская/ВИП Платформа
-            if (!extraSG)
+            if (!extraServiceGroup)
             {
                 goto5();
             }
 
             // Общая 1 линия поддержки
-            if (extraSG && isVipClient)
+            if (extraServiceGroup && isVipClient)
             {
-                selectedSGId = "OLP:ГО Общая 1 линия поддержки";
+                selectedServiceGroupId = "OLP:ГО Общая 1 линия поддержки";
                 UpdateCaseToFirstLineSupport();
                 goto7();
             }
@@ -335,43 +335,35 @@ namespace AnseremPackage
         private void goto5()
         {
             // TODO Найти ГО дежурную из кому/копии по графику работы
-        
-            Guid serviceGroupId = GetExtraServiceGroupFromAndCopyBasedOnTimeTable();
-            // TODO
-            extraSG =  UnimplementedMethod();
-        
+            GetExtraServiceGroupFromAndCopyBasedOnTimeTable();
+
             // дежурная ГО найдена или есть основная почта
-            if (selectedSGId)
+            if (selectedServiceGroupId)
             {
                 goto6();
             }
             else
             {
                 // TODO Найти основную ГО для контакта по компаниям
+                GetMainServiceGroupForContact();
             
-                // TODO
-                bool isDutyGroup = UnimplementedMethod();
-            
-                // TODO
-                serviceGroupId  = UnimplementedMethod();
-            
-                if (selectedSGId == Guid.Empty)
+                if (selectedServiceGroupId == Guid.Empty)
                 {
-                    selectedSGId = "Ид. экстра группы из кому/копии";
+                    selectedServiceGroupId = "Ид. экстра группы из кому/копии";
                     SendBookAutoreply();
-                    SetAutonotification(activity);
+                    SetAutonotification();
                     goto6();
                 }
                 else
                 {
-                    // [#Ид. экстра группы из кому/копии#] ... extraSG or selectedSGId?
-                    selectedSGId = extraSG;
+                    // [#Ид. экстра группы из кому/копии#] ... extraServiceGroup or selectedServiceGroupId????
+                    selectedServiceGroupId = extraServiceGroup;
                     SendBookAutoreply();
                 }
             }
         }
         
-        private void goto6(Guid selectedSG, object case, object activity, bool isOlpFirstStage, Guid selectedSG)
+        private void goto6()
         {
             object SG = GetSG(selectedSG);
 
