@@ -35,6 +35,8 @@ namespace AnseremPackage
         private bool clientVipPlatform { get; set; }
         private bool clientVip { get; set; }
         private Guid clientComponyId { get; set; }
+        private Guid selectedServiceGroupId { get; set; }
+
 
         public override void OnInserting(object sender, EntityAfterEventArgs e)
         {
@@ -365,28 +367,28 @@ namespace AnseremPackage
         
         private void goto6()
         {
-            object SG = GetSG(selectedSG);
+            object serviceGroup = GetServiceGroupById();
 
-            if (SG.type == "ВИП Платформа")
+            if (serviceGroup.type == "ВИП Платформа")
             {
                 var priority = "Важно";
                 SetSecondLineSupport();
                 goto7();
             }
 
-            if (SG.isClientVip)
+            if (serviceGroup.isClientVip)
             {
                 var priority = "Важно";
-                if (SG.vipDistribution)
+                if (serviceGroup.vipDistribution)
                 {
                     var thirdLineSupport = GetThirdLineSupport();
                     if (thirdLineSupport)
                     {
-                        SetThirdLineSupport(case);
+                        SetThirdLineSupport();
                         goto7();
                     }
                 }
-                SetSecondLineSupport(case);
+                SetSecondLineSupport();
                 goto7();
             }
 
@@ -399,12 +401,12 @@ namespace AnseremPackage
 
             if (firstLineSupport)
             {
-                SetSecondLineSupport(case);
+                SetSecondLineSupport();
                 goto7();
             }
             if (!firstLineSupport && isOlpFirstStage)
             {
-                selectedSG = "OLP:ГО Общая 1 линия поддержки";
+                selectedServiceGroupId = "OLP:ГО Общая 1 линия поддержки";
                 SetFirstLineSupport();
                 goto7();
             }
@@ -447,7 +449,12 @@ namespace AnseremPackage
             // TODO
         }
 
-        private List<Guid> GetServiceGroup(ServiceGroupType type)
+        private Guid GetServiceGroup(ServiceGroupType type)
+        {
+            // TODO
+        }
+       
+        private Guid GetServiceGroup(Guid id)
         {
             // TODO
         }
@@ -607,26 +614,6 @@ namespace AnseremPackage
         }
 
         private void SetupHolding()
-        {
-            // TODO
-        }
-
-        private void method()
-        {
-            // TODO
-        }
-
-        private void method()
-        {
-            // TODO
-        }
-
-        private void method()
-        {
-            // TODO
-        }
-
-        private void method()
         {
             // TODO
         }
