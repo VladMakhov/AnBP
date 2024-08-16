@@ -252,13 +252,12 @@ namespace AnseremPackage
 
             AddAccountToEmail();
             
-            GetMainServiceGroup();
+            GetMainServiceGroup(); // TODO
 
             // Найдена ли группа по компании ВИП Платформа?
             // Этап 1
             if (!extraServiceGroup && !isOlpFirstStage)
             {
-                // TODO Параметры придумать надо
                 // Найти ГО основную по графику работы 
                 GetMainServiceGroupBasedOnTimetable();
                 goto4();
@@ -270,7 +269,6 @@ namespace AnseremPackage
                 // Есть ГО
                 if (!extraServiceGroup)
                 {
-                    // TODO Параметры
                     GetMainServiceGroupBasedOnTimetableOlpFirstStage();
                 }
 
@@ -501,7 +499,7 @@ namespace AnseremPackage
 			query.Execute();
         }
 
-        private Activity GetParentActivityFromCase(parentActivityId)
+        private Activity GetParentActivityFromCase()
         {
             var activity = new Activity(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
