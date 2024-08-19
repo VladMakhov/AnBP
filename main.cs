@@ -60,6 +60,8 @@ namespace AnseremPackage
         
         private bool clientVip { get; set; }
 
+        private bool isExtraServiceGroup { get; set; }
+
         public override void OnInserting(object sender, EntityAfterEventArgs e)
         {
             base.OnInserting(sender, e);
@@ -255,29 +257,31 @@ namespace AnseremPackage
             GetMainServiceGroup(); // TODO
 
             // Найдена ли группа по компании ВИП Платформа?
-            // Этап 1
-            if (!extraServiceGroup && !isOlpFirstStage)
+            // Да
+            if (!isExtraServiceGroup && !isOlpFirstStage)
             {
                 // Найти ГО основную по графику работы 
                 GetMainServiceGroupBasedOnTimetable();
                 goto4();
             }
 
-            // Да
-            else if (isOlpFirstStage)
+            // Этап 1
+            if (isOlpFirstStage)
             {
                 // Есть ГО
-                if (!extraServiceGroup)
+                if (!isExtraServiceGroup)
                 {
-                    GetMainServiceGroupBasedOnTimetableOlpFirstStage();
+                    GetMainServiceGroupBasedOnTimetableOlpFirstStage(); // TODO
                 }
 
                 // Какую ГО установить?
-                if (extraServiceGroupFromAndCopyId && extraServiceGroup && !mainSGFromAndCopyId)
+                // Указана только дежурная в кому/копии
+                if (mainServiceGroup == Guid.Empty && extraServiceGroupFromAndCopy != Guid.Empty && isExtraServiceGroup) // Разобраться с параметрами
                 {
                     goto5();
                 }
 
+                // Найдена ГО по компании и графику клиента и почтовому адресу
                 else if (!extraServiceGroup)
                 {
                     // TODO Переделать под кастомные автоответы!
@@ -286,7 +290,8 @@ namespace AnseremPackage
                     goto6();
                 }
 
-                else if (mainServiceGroup && extraServiceGroup)
+                // Указана осн ГО в кому/копии
+                else if (mainServiceGroup == Guid.Empty && isExtraServiceGroup)
                 {
                     if (extraServiceGroup && extraServiceGroup)
                     {
@@ -313,7 +318,6 @@ namespace AnseremPackage
                         }
                     }
                 }
-
                 else
                 {
                     goto7();
@@ -806,7 +810,13 @@ namespace AnseremPackage
 
         private void SetAutonotification()
         {
-            // TODO
+            string sql = $"""
+                UPDATE Activity
+                SET IsAutoSubmitted = '{true}',
+                WHERE id = '{parentActivityId}' // TODO Is Parent activity Id needed?
+                """;
+			CustomQuery query = new CustomQuery(UserConnection, sql);
+			query.Execute();
         }
 
         private void SendEisRequest()
