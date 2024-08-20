@@ -24,6 +24,14 @@ namespace AnseremPackage
         private const Guid CONTACT_TYPE_EMPLOYEE = new Guid("60733EFC-F36B-1410-A883-16D83CAB0980");
        
         private const Guid CONTACT_TYPE_CLIENT = new Guid("00783ef6-f36b-1410-a883-16d83cab0980");
+ 
+        private const Guid OLP_DUTY_SERVICE_GROUP = new Guid("3A8B2C01-7A4D-4D5D-A7EA-8563BF6220B9"); 
+
+        private const Guid OLP_GENERAL_FIRST_LINE_SUPPORT = new Guid("64833178-8B17-4BB6-8CD9-6165B9B82637"); 
+
+        private const Guid CASE_URGENCY_TYPE_NOT_URGENT = new Guid("7a469f22-111d-4749-b5c2-e2a109a520a0");
+        
+
         // CONSTS
 
         private Entity Entity { get; set; }
@@ -61,6 +69,11 @@ namespace AnseremPackage
         private bool clientVip { get; set; }
 
         private bool isExtraServiceGroup { get; set; }
+        
+        private Guid importancy { get; set; }
+
+        private Guid urgency { get; set; }
+
 
         public override void OnInserting(object sender, EntityAfterEventArgs e)
         {
@@ -293,7 +306,8 @@ namespace AnseremPackage
                 // Указана осн ГО в кому/копии
                 else if (mainServiceGroup == Guid.Empty && isExtraServiceGroup)
                 {
-                    if (extraServiceGroup && extraServiceGroup)
+                    GetMainServiceGroupBasedOnTimetable(); // TODO Старый код. Вероятно, что другой метод
+                    if (isExtraServiceGroup && extraServiceGroupFromAndCopy)
                     {
                         goto5();
                     }
@@ -337,21 +351,21 @@ namespace AnseremPackage
             // Дежурная ГО 2 линия поддержки
             if (extraServiceGroup && isVipClient)
             {
-                selectedServiceGroupId = "OLP:ГО Дежурная группа";
+                selectedServiceGroupId = OLP_DUTY_SERVICE_GROUP;
                 goto5();
             }
 
             // Основная клиентская/ВИП Платформа
-            if (!extraServiceGroup)
+            else if (!extraServiceGroup)
             {
                 goto5();
             }
 
             // Общая 1 линия поддержки
-            if (extraServiceGroup && isVipClient)
+            else if (extraServiceGroup && isVipClient)
             {
-                selectedServiceGroupId = "OLP:ГО Общая 1 линия поддержки";
-                UpdateCaseToFirstLineSupport();
+                selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
+                UpdateCaseToFirstLineSupportExtended();
                 goto7();
             }
         }
@@ -502,6 +516,26 @@ namespace AnseremPackage
 			CustomQuery query = new CustomQuery(UserConnection, sql);
 			query.Execute();
         }
+
+    
+       private void UpdateCaseToFirstLineSupportExtended()
+       {
+            string sql = $"""
+                UPDATE \"Case\"
+                SET 
+                    OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
+                    OlpSupportLine = '{OLP_DUTY_SERVICE_GROUP}', // TODO оно ли это
+                    OlpImportant = '{importancy}', // TODO параметр не выставляется
+                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                    OlpIsAuthorVIP = '{clientVip}',
+                    Account = '{clientCompanyId}',
+                    Category = '{caseCategory}',
+                    Category = '{caseCategory}',
+                WHERE ID = '{CaseId}'
+                """;
+			CustomQuery query = new CustomQuery(UserConnection, sql);
+			query.Execute();
+       }
 
         private Activity GetParentActivityFromCase()
         {
