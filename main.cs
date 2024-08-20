@@ -28,10 +28,24 @@ namespace AnseremPackage
         private const Guid OLP_DUTY_SERVICE_GROUP = new Guid("3A8B2C01-7A4D-4D5D-A7EA-8563BF6220B9"); 
 
         private const Guid OLP_GENERAL_FIRST_LINE_SUPPORT = new Guid("64833178-8B17-4BB6-8CD9-6165B9B82637"); 
+        
+        private const Guid OLP_SECOND_LINE_SUPPORT = new Guid("DF594796-8E36-41BC-8EDD-732967053947"); 
+        
+        private const Guid OLP_THIRD_LINE_SUPPORT = new Guid("3D0C8864-BF2F-4734-8A29-31873EB07440"); 
 
         private const Guid CASE_URGENCY_TYPE_NOT_URGENT = new Guid("7a469f22-111d-4749-b5c2-e2a109a520a0");
         
+        private const Guid CASE_URGENCY_TYPE_URGENT = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
+        
+        private const Guid CASE_IMPORTANCY_IMPOTANT = new Guid("fd6b8923-4af8-48f9-8180-b6e1da3a1e2d");
 
+        private const Guid VIP_PLATFORM = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
+        
+        private const Guid ACTIVITY_PRIORITY_HIGH = new Guid("D625A9FC-7EE6-DF11-971B-001D60E938C6");
+
+        private const Guid ACTIVITY_PRIORITY_MEDIUM = new Guid("AB96FA02-7FE6-DF11-971B-001D60E938C6");
+        
+        private const Guid ACTIVITY_PRIORITY_LOW = new Guid("AC96FA02-7FE6-DF11-971B-001D60E938C6");
         // CONSTS
 
         private Entity Entity { get; set; }
@@ -385,40 +399,35 @@ namespace AnseremPackage
                 // TODO Найти основную ГО для контакта по компаниям
                 GetMainServiceGroupForContact();
             
-                if (selectedServiceGroupId == Guid.Empty)
-                {
-                    selectedServiceGroupId = "Ид. экстра группы из кому/копии";
-                    SendBookAutoreply();
-                    SetAutonotification();
-                    goto6();
-                }
-                else
-                {
-                    // [#Ид. экстра группы из кому/копии#] ... extraServiceGroup or selectedServiceGroupId????
-                    selectedServiceGroupId = extraServiceGroup;
-                    SendBookAutoreply();
-                }
+                selectedServiceGroupId = selectedServiceGroupId == Guid.Empty ? etraServiceGroupFromAndCopy : selectedServiceGroupId;
+                
+                SendBookAutoreply();
+                SetAutonotification();
+                goto6();
             }
         }
         
         private void goto6()
         {
-            object serviceGroup = GetServiceGroupById();
-
-            if (serviceGroup.type == "ВИП Платформа")
+            var serviceGroup = GetServiceGroupBySelectedId();
+            
+            // Выбранная ГО ВИП Платформа?
+            // Да
+            if (serviceGroup.GetTypedColumnValue<bool>("OlpTypeGroupService") == VIP_PLATFORM)
             {
-                var priority = "Важно";
+                importancy = CASE_IMPORTANCY_IMPOTANT;
                 SetSecondLineSupport();
                 goto7();
             }
 
-            if (serviceGroup.isClientVip)
+            if (clientVip)
             {
-                var priority = "Важно";
-                if (serviceGroup.vipDistribution)
+                importancy = CASE_IMPORTANCY_IMPOTANT;
+ 
+                if (serviceGroup.GetParentActivityFromCase<bool>("OlpDistribution"))
                 {
                     var thirdLineSupport = GetThirdLineSupport();
-                    if (thirdLineSupport)
+                    if (thirdLineSupport != Guid.Empty)
                     {
                         SetThirdLineSupport();
                         goto7();
@@ -430,9 +439,9 @@ namespace AnseremPackage
 
             var firstLineSupport = GetFirstLineSupport();
 
-            if (activity.priority == "Высокий")
+            if (activity.GetTypedColumnValue<Guid>("Priority") == ACTIVITY_PRIORITY_HIGH)
             {
-                var priority = "Важно";
+                importancy = CASE_IMPORTANCY_IMPOTANT;
             }
 
             if (firstLineSupport)
@@ -442,13 +451,13 @@ namespace AnseremPackage
             }
             if (!firstLineSupport && isOlpFirstStage)
             {
-                selectedServiceGroupId = "OLP:ГО Общая 1 линия поддержки";
+                selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
                 SetFirstLineSupport();
                 goto7();
             }
         }
         
-        private void goto7(object EIS)
+        private void goto7()
         {
             if (EIS.code == 200)
             {
@@ -458,8 +467,23 @@ namespace AnseremPackage
             if (EIS.orderNumbCheck != Guid.Empty)
             {
                // TODO Собрать услуги для добавления
+               CollectServicesForInsertion();
                
                // TODO Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
+                IProcessEngine processEngine = userConnection.ProcessEngine;
+                IProcessExecutor processExecutor = processEngine.ProcessExecutor;
+  
+                try
+                {
+	                processExecutor.Execute(
+		            "_PROCESS",
+		                new Dictionary<string, string> { {"_PARAMETR", _KEY} }
+	                );
+                }
+                catch (Exception e)
+                {
+
+                }
             }
 
             return;
@@ -530,7 +554,7 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    Category = '{caseCategory}',
+                    OlpServiceGroupForOrder = '{}', // TODO
                 WHERE ID = '{CaseId}'
                 """;
 			CustomQuery query = new CustomQuery(UserConnection, sql);
@@ -779,9 +803,17 @@ namespace AnseremPackage
 			query.Execute();
         }
 
-        private Guid GetServiceGroupById(Guid id)
+        private OlpServiceGroup GetServiceGroupBySelectedId()
         {
-            // TODO
+            var serviceGroup = new account(UserConnection);
+            Dictionary<string, object> conditions = new Dictionary<string, object> {
+                    { nameof(Account.Id), selectedServiceGroupId},
+                };
+
+            if (serviceGroup.FetchFromDB(conditions))
+            {
+                return serviceGroup;
+            }
         }
 
         private void GetMainServiceGroup()
@@ -821,20 +853,62 @@ namespace AnseremPackage
 
         private void SetFirstLineSupport()
         {
-            // TODO Выставить 1 линию поддержки + Завершение БП
-            return;
+            
+            string sql = $"""
+                UPDATE \"Case\"
+                SET 
+                    OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
+                    OlpSupportLine = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', // TODO оно ли это
+                    OlpImportant = '{importancy}', // TODO параметр не выставляется
+                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                    OlpIsAuthorVIP = '{clientVip}',
+                    Account = '{clientCompanyId}',
+                    Category = '{caseCategory}',
+                    OlpServiceGroupForOrder = '{}', // TODO
+                WHERE ID = '{CaseId}'
+                """;
+			CustomQuery query = new CustomQuery(UserConnection, sql);
+			query.Execute();
         }
 
         private void SetSecondLineSupport()
         {
-            // TODO
-            return;
+            string sql = $"""
+                UPDATE \"Case\"
+                SET 
+                    OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
+                    OlpSupportLine = '{OLP_SECOND_LINE_SUPPORT}', // TODO оно ли это
+                    OlpImportant = '{importancy}', // TODO параметр не выставляется
+                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                    OlpIsAuthorVIP = '{clientVip}',
+                    Account = '{clientCompanyId}',
+                    Category = '{caseCategory}',
+                    OlpServiceGroupForOrder = '{}', // TODO
+                WHERE ID = '{CaseId}'
+                """;
+			CustomQuery query = new CustomQuery(UserConnection, sql);
+			query.Execute();
         }
 
         private void SetThirdLineSupport()
         {
-            // TODO
-            return;
+            
+            string sql = $"""
+                UPDATE \"Case\"
+                SET 
+                    OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
+                    OlpSupportLine = '{OLP_THIRD_LINE_SUPPORT}', // TODO оно ли это
+                    OlpImportant = '{CASE_IMPORTANCY_IMPOTANT}', // TODO параметр не выставляется
+                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                    OlpIsAuthorVIP = '{clientVip}',
+                    Account = '{clientCompanyId}',
+                    Category = '{caseCategory}',
+                    OlpServiceGroupForOrder = '{}', // TODO
+                    Owner = '{}'
+                WHERE ID = '{CaseId}'
+                """;
+			CustomQuery query = new CustomQuery(UserConnection, sql);
+			query.Execute();
         }
 
         private void SendBookAutoreply()
@@ -868,9 +942,14 @@ namespace AnseremPackage
             // TODO Сюда ебануть код из "Обновление добавление почт и телефонов контакта"
         }
 
-        private void RefreshPhones()
+        private void refreshPhones()
         {
             // TODO Сюда то же из "Обновление добавление почт и телефонов контакта"
+        }
+
+        private void CollectServicesForInsertion()
+        {
+            // TODO Элемент старого кода   
         }
 
     }
