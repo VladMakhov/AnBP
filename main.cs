@@ -38,7 +38,9 @@ namespace AnseremPackage
         private const Guid CASE_URGENCY_TYPE_URGENT = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
         
         private const Guid CASE_IMPORTANCY_IMPOTANT = new Guid("fd6b8923-4af8-48f9-8180-b6e1da3a1e2d");
-
+        
+        private const Guid CASE_IMPORTANCY_NOT_IMPOTANT = new Guid("007fc788-5edd-42dd-a9ac-c56d010e7205");
+        
         private const Guid VIP_PLATFORM = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
         
         private const Guid ACTIVITY_PRIORITY_HIGH = new Guid("D625A9FC-7EE6-DF11-971B-001D60E938C6");
@@ -46,6 +48,14 @@ namespace AnseremPackage
         private const Guid ACTIVITY_PRIORITY_MEDIUM = new Guid("AB96FA02-7FE6-DF11-971B-001D60E938C6");
         
         private const Guid ACTIVITY_PRIORITY_LOW = new Guid("AC96FA02-7FE6-DF11-971B-001D60E938C6");
+        
+        private const Guid CONTACT_TYPE_UNDEFINED_CLIENT_SPAM = new Guid("1a334238-08ba-466d-8d40-a996afcb8fe1");
+        
+        private const Guid CASE_CATEGORY_EMPLOYEE_SUPPLIER = new Guid("84f67e2e-842e-47ae-99aa-882d1bc8e513");
+        
+        private const Guid ACCOUNT_TYPE_SUPPLIER = new Guid("1414f55f-21d2-4bb5-847a-3a0681d0a13a");
+        
+        private const Guid ACCOUNT_TYPE_OUR_COMPANY = new Guid("57412fad-53e6-df11-971b-001d60e938c6");
         // CONSTS
 
         private Entity Entity { get; set; }
@@ -99,8 +109,8 @@ namespace AnseremPackage
             contact = ReadContactFromCase(_case.GetTypedColumnValue<Guid>("ContactId"));
             
             // Нет (СПАМ) - 2 ЭТАП
-            if (contact.GetTypedColumnValue<Guid> == "Клиент не определён/Спам")
-            {
+            if (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM) 
+            }
                 // Спам на обращении + 1 линия поддержки
                 UpdateCaseToFirstLineSupport();
                 return;
@@ -137,9 +147,9 @@ namespace AnseremPackage
             
             // Да (Сотрудник) - 2 ЭТАП
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty && !isOlpFirstStage && 
-                (contact.GetTypedColumnValue<Guid>("Type") == "Сотрудник" || contact.GetTypedColumnValue<Guid>("Type") == "Поставщик"))
+                (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER))
             {
-                caseCategory = "Сотрудник/Поставщик";
+                caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER; 
                 /**
                 * Категория (Сотрудник/Поставщик) -2 этап
                 * Выставить 1 линию поддержки
@@ -149,9 +159,9 @@ namespace AnseremPackage
             }
 
             // 1 Этап (Сотрудник/Поставщик)
-            if (isOlpFirstStage && (contact.GetTypedColumnValue<Guid>("Type") == "Сотрудник" || contact.GetTypedColumnValue<Guid>("Type") == "Поставщик"))
+            if (isOlpFirstStage && (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER)
             {
-                caseCategory = "Сотрудник/Поставщик";
+                caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                 goto2();
             }
 
@@ -161,9 +171,9 @@ namespace AnseremPackage
                 account = FetchAccountById(GetAccountIdFromAccountCommunication());
 
                 // Да (Поставщик)
-                if (account != null && account.GetTypedColumnValue<Guid>("Type") == "Поставщик")
+                if (account != null && account.GetTypedColumnValue<Guid>("Type") == ACCOUNT_TYPE_SUPPLIER)
                 {
-                    caseCategory = "Сотрудник/Поставщик";
+                    caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                     SetContactType(contact.GetTypedColumnValue<Guid>("Id"), CONTACT_TYPE_SUPPLIER);
                     if (isOlpFirstStage)
                     {
@@ -176,9 +186,9 @@ namespace AnseremPackage
                 }
 
                 // Да (Аэроклуб)
-                if (account != Guid.Empty && account.type == "Наша компания")
+                if (account != Guid.Empty && account.GetTypedColumnValue<Guid>("Type") == ACCOUNT_TYPE_OUR_COMPANY)
                 {
-                    caseCategory = "Наша компания";
+                    caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                     SetContactType(contact.GetTypedColumnValue<Guid>("Id"), CONTACT_TYPE_EMPLOYEE);
                     if (isOlpFirstStage)
                     {
@@ -196,7 +206,7 @@ namespace AnseremPackage
 
             // Да (Клиент, СПАМ)
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty && 
-                (contact.GetTypedColumnValue<Guid>("Type") == "Клиент" || contact.GetTypedColumnValue<Guid>("Type") == "Клиент не определен/Спам"))
+                (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_CLIENT || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
                 EisPath();
             }
@@ -223,10 +233,10 @@ namespace AnseremPackage
             }
 
             // Нет по домену и нет по ЕИС и (пустой тип или СПАМ)
-            if (eis.code == 200 && contact.account == Guid.Empty && (contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == "Клиент не определен/Спам"))
+            if (eis.code == 200 && contact.account == Guid.Empty && (contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
                 // категория СПАМ
-                caseCategory = "Клиент не определен/Спам";
+                caseCategory = CONTACT_TYPE_UNDEFINED_CLIENT_SPAM;
                 if (isOlpFirstStage)
                 {
                     SetSpamOnCase();
@@ -530,12 +540,12 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE \"Case\"
                 SET 
-                    OlpGroupServices = '{ГО Общая 1 линия поддержки}', // TODO
-                    OlpSupportLine = '{ОР 1 линия поддержки}', // TODO
-                    OlpImportant = '{Не важно}', // TODO
-                    OlpUrgency = '{Не срочно}', // TODO
+                    OlpGroupServices = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', // TODO ГО Общая 1 линия поддержки
+                    OlpSupportLine = '{OLP_DUTY_SERVICE_GROUP}', // TODO ОР 1 линия поддержки
+                    OlpImportant = '{CASE_IMPORTANCY_NOT_IMPOTANT}', // TODO
+                    OlpUrgency = '{CASE_URGENCY_TYPE_URGENT}', // TODO
                     Category = '{caseCategory}'
-                WHERE ID = '{CaseId}'
+                WHERE ID = '{caseId}'
                 """;
 			CustomQuery query = new CustomQuery(UserConnection, sql);
 			query.Execute();
@@ -555,7 +565,7 @@ namespace AnseremPackage
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
                     OlpServiceGroupForOrder = '{}', // TODO
-                WHERE ID = '{CaseId}'
+                WHERE ID = '{caseId}'
                 """;
 			CustomQuery query = new CustomQuery(UserConnection, sql);
 			query.Execute();
@@ -693,7 +703,7 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE Contact
                 SET 
-                    Type = '{Клиент не определен/Спам}', // TODO
+                    Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', // TODO
                     Account = '{companyId}' // TODO
                 WHERE id = '{contactId}'
                 """;
@@ -865,7 +875,7 @@ namespace AnseremPackage
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
                     OlpServiceGroupForOrder = '{}', // TODO
-                WHERE ID = '{CaseId}'
+                WHERE ID = '{caseId}'
                 """;
 			CustomQuery query = new CustomQuery(UserConnection, sql);
 			query.Execute();
@@ -884,7 +894,7 @@ namespace AnseremPackage
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
                     OlpServiceGroupForOrder = '{}', // TODO
-                WHERE ID = '{CaseId}'
+                WHERE ID = '{caseId}'
                 """;
 			CustomQuery query = new CustomQuery(UserConnection, sql);
 			query.Execute();
@@ -905,7 +915,7 @@ namespace AnseremPackage
                     Category = '{caseCategory}',
                     OlpServiceGroupForOrder = '{}', // TODO
                     Owner = '{}'
-                WHERE ID = '{CaseId}'
+                WHERE ID = '{caseId}'
                 """;
 			CustomQuery query = new CustomQuery(UserConnection, sql);
 			query.Execute();
