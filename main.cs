@@ -16,84 +16,88 @@ namespace AnseremPackage
     { 
         // CONSTS
         private const Guid SERVICE_GROUP_TYPE_MAIN = new Guid("C82CA04F-5319-4611-A6EE-64038BA89D71");
-       
+
         private const Guid SERVICE_GROUP_TYPE_EXTRA = new Guid("DC1B5435-6AA1-4CCD-B950-1C4ADAB1F8AD");
-       
+
         private const Guid CONTACT_TYPE_SUPPLIER = new Guid("260067DD-145E-4BB1-9C91-6BF3A36D57E0");
-       
+
         private const Guid CONTACT_TYPE_EMPLOYEE = new Guid("60733EFC-F36B-1410-A883-16D83CAB0980");
-       
+
         private const Guid CONTACT_TYPE_CLIENT = new Guid("00783ef6-f36b-1410-a883-16d83cab0980");
- 
+
         private const Guid OLP_DUTY_SERVICE_GROUP = new Guid("3A8B2C01-7A4D-4D5D-A7EA-8563BF6220B9"); 
 
         private const Guid OLP_GENERAL_FIRST_LINE_SUPPORT = new Guid("64833178-8B17-4BB6-8CD9-6165B9B82637"); 
-        
+
         private const Guid OLP_SECOND_LINE_SUPPORT = new Guid("DF594796-8E36-41BC-8EDD-732967053947"); 
-        
+
         private const Guid OLP_THIRD_LINE_SUPPORT = new Guid("3D0C8864-BF2F-4734-8A29-31873EB07440"); 
 
         private const Guid CASE_URGENCY_TYPE_NOT_URGENT = new Guid("7a469f22-111d-4749-b5c2-e2a109a520a0");
-        
+
         private const Guid CASE_URGENCY_TYPE_URGENT = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
-        
+
         private const Guid CASE_IMPORTANCY_IMPOTANT = new Guid("fd6b8923-4af8-48f9-8180-b6e1da3a1e2d");
-        
+
         private const Guid CASE_IMPORTANCY_NOT_IMPOTANT = new Guid("007fc788-5edd-42dd-a9ac-c56d010e7205");
-        
+
         private const Guid VIP_PLATFORM = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
-        
+
         private const Guid ACTIVITY_PRIORITY_HIGH = new Guid("D625A9FC-7EE6-DF11-971B-001D60E938C6");
 
         private const Guid ACTIVITY_PRIORITY_MEDIUM = new Guid("AB96FA02-7FE6-DF11-971B-001D60E938C6");
-        
+
         private const Guid ACTIVITY_PRIORITY_LOW = new Guid("AC96FA02-7FE6-DF11-971B-001D60E938C6");
-        
+
         private const Guid CONTACT_TYPE_UNDEFINED_CLIENT_SPAM = new Guid("1a334238-08ba-466d-8d40-a996afcb8fe1");
-        
+
         private const Guid CASE_CATEGORY_EMPLOYEE_SUPPLIER = new Guid("84f67e2e-842e-47ae-99aa-882d1bc8e513");
-        
+
         private const Guid ACCOUNT_TYPE_SUPPLIER = new Guid("1414f55f-21d2-4bb5-847a-3a0681d0a13a");
-        
+
         private const Guid ACCOUNT_TYPE_OUR_COMPANY = new Guid("57412fad-53e6-df11-971b-001d60e938c6");
+        
+        private const Guid CASE_STATUS_CLOSED = new Guid("ae7f411e-f46b-1410-009b-0050ba5d6c38");
+        
+        private const Guid CASE_STATUS_CANCELED = new Guid("6e5f4218-f46b-1410-fe9a-0050ba5d6c38");
         // CONSTS
 
         private Entity Entity { get; set; }
-  
+
         private UserConnection UserConnection { get; set; }
 
         private bool isOlpFirstStage = GetOlpFirstStage();
 
         private string caseCategory { get; set; }
-                        
+
         private object contact { get; set; }
-        
+
         private object activity { get; set; }
-        
+
         private object eis { get; set; }
-        
+
         private object account { get; set; }
-        
+
         private Guid caseId { get; set; }
 
         private Guid parentActivityId { get; set; }
-        
+
         private Guid mainServiceGroup { get; set; }
-        
+
         private Guid extraServiceGroup { get; set; }
-        
+
         private Guid holding { get; set; }
-        
+
         private Guid clientCompanyId { get; set; }
-        
+
         private Guid selectedServiceGroupId { get; set; }
-        
+
         private bool clientVipPlatform { get; set; }
-        
+
         private bool clientVip { get; set; }
 
         private bool isExtraServiceGroup { get; set; }
-        
+
         private Guid importancy { get; set; }
 
         private Guid urgency { get; set; }
@@ -107,7 +111,7 @@ namespace AnseremPackage
 
             // Чтение карточки контакта из обращения
             contact = ReadContactFromCase(_case.GetTypedColumnValue<Guid>("ContactId"));
-            
+
             // Нет (СПАМ) - 2 ЭТАП
             if (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM) 
             {
@@ -118,42 +122,42 @@ namespace AnseremPackage
 
             parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId")
 
-            // email родительской активности
-            activity = GetParentActivityFromCase();
+                // email родительской активности
+                activity = GetParentActivityFromCase();
 
             /**
-            * Чтение всех основных групп для выделения подходящей основной группы
-            * Найти основную группу по email в кому/копия
-            */
+             * Чтение всех основных групп для выделения подходящей основной группы
+             * Найти основную группу по email в кому/копия
+             */
             mainServiceGroup = GetServiceGroup(SERVICE_GROUP_TYPE_MAIN);
-            
+
             /**
-            * Чтение дежурной группы
-            * Найти дежурную группу по email в кому/копия
-            */
+             * Чтение дежурной группы
+             * Найти дежурную группу по email в кому/копия
+             */
             extraServiceGroup = GetServiceGroup(SERVICE_GROUP_TYPE_EXTRA);
-            
+
             /**
-            * Добавить TRAVEL
-            * Поставить отменено на всех отмененных тревел обращениях // TODO
-            */  
-            SetTravelParameter(); // TODO
-            
+             * Добавить TRAVEL
+             * Поставить отменено на всех отмененных тревел обращениях // TODO
+             */  
+            SetTravelParameter(); 
+
             /**
-            * Добавить Релокация - СИБУР
-            * Поставить отменено на всех отмененных тревел обращениях - Копия // TODO
-            */
-            SetSiburParameter(); // TODO
-            
+             * Добавить Релокация - СИБУР
+             * Поставить отменено на всех отмененных тревел обращениях - Копия // TODO
+             */
+            SetSiburParameter(); 
+
             // Да (Сотрудник) - 2 ЭТАП
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty && !isOlpFirstStage && 
-                (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER))
+                    (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER))
             {
                 caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER; 
                 /**
-                * Категория (Сотрудник/Поставщик) -2 этап
-                * Выставить 1 линию поддержки
-                */
+                 * Категория (Сотрудник/Поставщик) -2 этап
+                 * Выставить 1 линию поддержки
+                 */
                 SetFirstLineSupport();
                 return;
             }
@@ -206,7 +210,7 @@ namespace AnseremPackage
 
             // Да (Клиент, СПАМ)
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty && 
-                (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_CLIENT || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
+                    (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_CLIENT || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
                 EisPath();
             }
@@ -215,11 +219,11 @@ namespace AnseremPackage
         private void EisPath()
         {
             eis = SendEisRequest(); // TODO интеграция + объект ЕИС
-            // Да
+                                    // Да
             if (eis.code == 200 || (eis.code == 200 && contact.aeroclubCheck))
             {
                 account = FetchAccountByEis(eis.account);
-                
+
                 RefreshEmails(); // TODO
 
                 RefreshPhones(); // TODO
@@ -277,8 +281,8 @@ namespace AnseremPackage
         }
 
         /** 
-        * Чтение карточки контакта после обновления
-        */
+         * Чтение карточки контакта после обновления
+         */
         private void ReadContactAfterRefreshing()
         {
             GetContactAfterRefreshing(contact.GetTypedColumnValue<Guid>("Id"));
@@ -290,7 +294,7 @@ namespace AnseremPackage
             clientCompanyId = contact.GetTypedColumnValue<bool>("Account");
 
             AddAccountToEmail();
-            
+
             GetMainServiceGroup(); // TODO
 
             // Найдена ли группа по компании ВИП Платформа?
@@ -393,7 +397,7 @@ namespace AnseremPackage
                 goto7();
             }
         }
-        
+
         private void goto5()
         {
             // TODO Найти ГО дежурную из кому/копии по графику работы
@@ -408,19 +412,19 @@ namespace AnseremPackage
             {
                 // TODO Найти основную ГО для контакта по компаниям
                 GetMainServiceGroupForContact();
-            
+
                 selectedServiceGroupId = selectedServiceGroupId == Guid.Empty ? etraServiceGroupFromAndCopy : selectedServiceGroupId;
-                
+
                 SendBookAutoreply();
                 SetAutonotification();
                 goto6();
             }
         }
-        
+
         private void goto6()
         {
             var serviceGroup = GetServiceGroupBySelectedId();
-            
+
             // Выбранная ГО ВИП Платформа?
             // Да
             if (serviceGroup.GetTypedColumnValue<bool>("OlpTypeGroupService") == VIP_PLATFORM)
@@ -433,7 +437,7 @@ namespace AnseremPackage
             if (clientVip)
             {
                 importancy = CASE_IMPORTANCY_IMPOTANT;
- 
+
                 if (serviceGroup.GetParentActivityFromCase<bool>("OlpDistribution"))
                 {
                     var thirdLineSupport = GetThirdLineSupport();
@@ -466,7 +470,7 @@ namespace AnseremPackage
                 goto7();
             }
         }
-        
+
         private void goto7()
         {
             if (EIS.code == 200)
@@ -476,19 +480,19 @@ namespace AnseremPackage
 
             if (EIS.orderNumbCheck != Guid.Empty)
             {
-               // TODO Собрать услуги для добавления
-               CollectServicesForInsertion();
-               
-               // TODO Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
+                // TODO Собрать услуги для добавления
+                CollectServicesForInsertion();
+
+                // TODO Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
                 IProcessEngine processEngine = userConnection.ProcessEngine;
                 IProcessExecutor processExecutor = processEngine.ProcessExecutor;
-  
+
                 try
                 {
-	                processExecutor.Execute(
-		            "_PROCESS",
-		                new Dictionary<string, string> { {"_PARAMETR", _KEY} }
-	                );
+                    processExecutor.Execute(
+                            "_PROCESS",
+                            new Dictionary<string, string> { {"_PARAMETR", _KEY} }
+                            );
                 }
                 catch (Exception e)
                 {
@@ -504,30 +508,30 @@ namespace AnseremPackage
             string sql = $"""
                 SELECT BooleanValue FROM SysSettingsValue 
                 WHERE SysSettingsId = (
-                    SELECT id FROM SysSettings WHERE Code LIKE 'OLPIsFirstStepToPROD'
-                )
+                        SELECT id FROM SysSettings WHERE Code LIKE 'OLPIsFirstStepToPROD'
+                        )
                 """;
-			
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			
-			using (var db = UserConnection.EnsureDBConnection())
-			{
-				using (var reader = query.ExecuteReader(db))
-				{
-					if (reader.Read())
+
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+
+            using (var db = UserConnection.EnsureDBConnection())
+            {
+                using (var reader = query.ExecuteReader(db))
+                {
+                    if (reader.Read())
                     {
                         return reader.GetColumnValue<bool>("BooleanValue");
-					}
-				}
-			}
+                    }
+                }
+            }
         }
 
         private Contact ReadContactFromCase(Guid contactId)
         {
             var contact = new Contact(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
-                    { nameof(Contact.Id), contactId}, 
-                };
+                { nameof(Contact.Id), contactId}, 
+            };
 
             if (contact.FetchFromDB(conditions))
             {
@@ -540,73 +544,73 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE \"Case\"
                 SET 
-                    OlpGroupServices = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', // TODO ГО Общая 1 линия поддержки
-                    OlpSupportLine = '{OLP_DUTY_SERVICE_GROUP}', // TODO ОР 1 линия поддержки
-                    OlpImportant = '{CASE_IMPORTANCY_NOT_IMPOTANT}', // TODO
-                    OlpUrgency = '{CASE_URGENCY_TYPE_URGENT}', // TODO
-                    Category = '{caseCategory}'
-                WHERE ID = '{caseId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                OlpGroupServices = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', // TODO ГО Общая 1 линия поддержки
+                                 OlpSupportLine = '{OLP_DUTY_SERVICE_GROUP}', // TODO ОР 1 линия поддержки
+                                 OlpImportant = '{CASE_IMPORTANCY_NOT_IMPOTANT}', // TODO
+                                 OlpUrgency = '{CASE_URGENCY_TYPE_URGENT}', // TODO
+                                 Category = '{caseCategory}'
+                                     WHERE ID = '{caseId}'
+                                     """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
-    
-       private void UpdateCaseToFirstLineSupportExtended()
-       {
+
+        private void UpdateCaseToFirstLineSupportExtended()
+        {
             string sql = $"""
                 UPDATE \"Case\"
                 SET 
-                    OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
-                    OlpSupportLine = '{OLP_DUTY_SERVICE_GROUP}', // TODO оно ли это
-                    OlpImportant = '{importancy}', // TODO параметр не выставляется
-                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                    OlpIsAuthorVIP = '{clientVip}',
-                    Account = '{clientCompanyId}',
-                    Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{}', // TODO
-                WHERE ID = '{caseId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
-       }
-
-       private Activity GetParentActivityFromCase()
-       {
-           var activity = new Activity(UserConnection);
-           Dictionary<string, object> conditions = new Dictionary<string, object> {
-               { nameof(Activity.Id), contactId },
-                   { nameof(Activity.TypeId) "Email"} // TODO
-           };
-
-           if (activity.FetchFromDB(conditions))
-           {
-               return activity;
-           }
+                OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
+                                 OlpSupportLine = '{OLP_DUTY_SERVICE_GROUP}', // TODO оно ли это
+                                 OlpImportant = '{importancy}', // TODO параметр не выставляется
+                                 OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                                 OlpIsAuthorVIP = '{clientVip}',
+                                 Account = '{clientCompanyId}',
+                                 Category = '{caseCategory}',
+                                 OlpServiceGroupForOrder = '{}', // TODO
+                                 WHERE ID = '{caseId}'
+                                     """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
-       private Guid GetServiceGroup(Guid type)
-       {
-           string sql = $"""
-               SELECT * FROM OlpServiceGroup
-               WHERE Id IS NOT NULL AND
-               OlpSgEmail IS NOT NULL AND
-               OlpTypeGroupService = '{type}' // TODO
-               """;
+        private Activity GetParentActivityFromCase()
+        {
+            var activity = new Activity(UserConnection);
+            Dictionary<string, object> conditions = new Dictionary<string, object> {
+                { nameof(Activity.Id), contactId },
+                    { nameof(Activity.TypeId) "Email"} // TODO
+            };
 
-           CustomQuery query = new CustomQuery(UserConnection, sql);
+            if (activity.FetchFromDB(conditions))
+            {
+                return activity;
+            }
+        }
 
-           using (var db = UserConnection.EnsureDBConnection())
-           {
-               using (var reader = query.ExecuteReader(db))
-               {
-                   while (reader.Read())
-                   {
-                       // TODO Тут должна быть ебанная хуйня из "Найти основную группу по email в кому/копия"
-                   }
-               }
-           }
-       }
+        private Guid GetServiceGroup(Guid type)
+        {
+            string sql = $"""
+                SELECT * FROM OlpServiceGroup
+                WHERE Id IS NOT NULL AND
+                OlpSgEmail IS NOT NULL AND
+                OlpTypeGroupService = '{type}' // TODO
+                """;
+
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+
+            using (var db = UserConnection.EnsureDBConnection())
+            {
+                using (var reader = query.ExecuteReader(db))
+                {
+                    while (reader.Read())
+                    {
+                        // TODO Тут должна быть ебанная хуйня из "Найти основную группу по email в кому/копия"
+                    }
+                }
+            }
+        }
 
         private void SetTravelParameter()
         {
@@ -631,12 +635,12 @@ namespace AnseremPackage
                     }
                 }
             }
-            
+
             if (string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(body) && body.ToUpper().Contains("TRAVEL-"))
             {
 
                 var regex = new Regex(@"(?<=TRAVEL-)\d+");
-                
+
                 foreach (Match match in regex.Matches(body))
                 {
                     themetravel = match.Value.ToString();
@@ -648,17 +652,35 @@ namespace AnseremPackage
                 }
 
             }
-            
+
+            string sql = $"""
+                UPDATE 
+                \"Case\" 
+                SET 
+                OlpTRAVELNumber = '{themetravel}',
+                                WHERE 
+                                    id = '{caseId}'
+                                    """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
+    
             string sql = $"""
                 UPDATE 
                     \"Case\" 
                 SET 
-                    OlpTRAVELNumber = '{themetravel}',
+                    OlpReloThemeSibur = '{themetravel}',
                 WHERE 
-                    id = '{caseId}'
-            """;
+                    id = '{caseId}';
+                
+                UPDATE 
+                    \"Case\"
+                SET 
+                    OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
+                WHERE 
+                    statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}' 
+                """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
-            query.Execute();
+            query.Execute();    
 
         }
 
@@ -681,20 +703,26 @@ namespace AnseremPackage
                             break;
                         }
                     }
-                    Set<string>("SiburTheme", themetravel);
                 }
             }
-            
+
             string sql = $"""
                 UPDATE 
                     \"Case\" 
                 SET 
                     OlpReloThemeSibur = '{themetravel}',
                 WHERE 
-                    id = '{caseId}'
+                    id = '{caseId}';
+                
+                UPDATE 
+                    \"Case\"
+                SET 
+                    OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
+                WHERE 
+                    statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}' 
                 """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
-            query.Execute();
+            query.Execute();    
         }
 
         private Guid GetAccountIdFromAccountCommunication()
@@ -746,8 +774,8 @@ namespace AnseremPackage
         {
             var account = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
-                    { nameof(Account.OlpCode), accountId },
-                };
+                { nameof(Account.OlpCode), accountId },
+            };
 
             if (account.FetchFromDB(conditions))
             {
@@ -762,12 +790,12 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE Contact
                 SET 
-                    Type = '{type}',
-                    Account = '{companyId}'
-                WHERE id = '{contactId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                Type = '{type}',
+                     Account = '{companyId}'
+                         WHERE id = '{contactId}'
+                         """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void SetSpamOnCase()
@@ -776,12 +804,12 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE Contact
                 SET 
-                    Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', // TODO
-                    Account = '{companyId}' // TODO
-                WHERE id = '{contactId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', // TODO
+                     Account = '{companyId}' // TODO
+                         WHERE id = '{contactId}'
+                         """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void RefreshContact(Eis eis, Guid accountId, Guid contactId)
@@ -789,24 +817,24 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE Contact
                 SET
-                    Email = '{Email}', // TODO
-                    Account = '{accountId}',
-                    OlpBooleanAeroclubCheck = 1,
-                    OlpSignVip = '{eis.isVip}',
-                    OlpContactProfileConsLink = '{eis.profileLink}',
-                    OlpLnFnPat = '{}', // TODO
-                    GivenName = '{eis.rusFirstName}',
-                    MiddleName = '{eis.rusMiddleName}',
-                    Surname = '{eis.rusSurname}',
-                    OlpSignVipPlatf = '{eis.isVipPlatform}',
-                    OlpIsAuthorizedPerson = '{eis.isAuthorizedPerson}',
-                    OlpIsContactPerson = '{eis.isContactPerson}',
-                    Type = '{CONTACT_TYPE_CLIENT}',
-                    OlpExternalContId = '{eis.idOut}'
-                WHERE id = '{contactId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                Email = '{Email}', // TODO
+                      Account = '{accountId}',
+                      OlpBooleanAeroclubCheck = 1,
+                      OlpSignVip = '{eis.isVip}',
+                      OlpContactProfileConsLink = '{eis.profileLink}',
+                      OlpLnFnPat = '{}', // TODO
+                      GivenName = '{eis.rusFirstName}',
+                      MiddleName = '{eis.rusMiddleName}',
+                      Surname = '{eis.rusSurname}',
+                      OlpSignVipPlatf = '{eis.isVipPlatform}',
+                      OlpIsAuthorizedPerson = '{eis.isAuthorizedPerson}',
+                      OlpIsContactPerson = '{eis.isContactPerson}',
+                      Type = '{CONTACT_TYPE_CLIENT}',
+                      OlpExternalContId = '{eis.idOut}'
+                          WHERE id = '{contactId}'
+                          """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void RefreshContactCompanyAndEmail()
@@ -816,13 +844,13 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE Contact
                 SET
-                    Email = '{Email}', // TODO
-                    Account = '{accountId}',
-                    Type = '{CONTACT_TYPE_CLIENT}',
-                WHERE id = '{contactId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                Email = '{Email}', // TODO
+                      Account = '{accountId}',
+                      Type = '{CONTACT_TYPE_CLIENT}',
+                      WHERE id = '{contactId}'
+                          """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void RefreshContactTypeAndEmail()
@@ -831,12 +859,12 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE Contact
                 SET
-                    Email = '{Email}', // TODO
-                    Type = '{CONTACT_TYPE_CLIENT}',
-                WHERE id = '{contactId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                Email = '{Email}', // TODO
+                      Type = '{CONTACT_TYPE_CLIENT}',
+                      WHERE id = '{contactId}'
+                          """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void GetHoldingFromAccountBindedToEis()
@@ -847,27 +875,27 @@ namespace AnseremPackage
                 INNER JOIN Account a ON a.Id = c.AccountId
                 WHERE c.Id = '{contactid}'
                 """;
-			
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			
-			using (var db = UserConnection.EnsureDBConnection())
-			{
-				using (var reader = query.ExecuteReader(db))
-				{
-					if (reader.Read())
+
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+
+            using (var db = UserConnection.EnsureDBConnection())
+            {
+                using (var reader = query.ExecuteReader(db))
+                {
+                    if (reader.Read())
                     {
                         return reader.GetColumnValue<Guid>("OlpHoldingId");
-					}
-				}
-			}
+                    }
+                }
+            }
         }
 
         private void GetContactAfterRefreshing(Guid contactId)
         {
             var updatedContact = new Contact(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
-                    { nameof(Contact.Id), contactId}, 
-                };
+                { nameof(Contact.Id), contactId}, 
+            };
 
             if (updatedContact.FetchFromDB(conditions))
             {
@@ -880,18 +908,18 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE Activity
                 SET Account = '{clientCompanyId}', // TODO
-                WHERE id = '{parentActivityId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                    WHERE id = '{parentActivityId}'
+                        """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private OlpServiceGroup GetServiceGroupBySelectedId()
         {
             var serviceGroup = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
-                    { nameof(Account.Id), selectedServiceGroupId},
-                };
+                { nameof(Account.Id), selectedServiceGroupId},
+            };
 
             if (serviceGroup.FetchFromDB(conditions))
             {
@@ -936,22 +964,22 @@ namespace AnseremPackage
 
         private void SetFirstLineSupport()
         {
-            
+
             string sql = $"""
                 UPDATE \"Case\"
                 SET 
-                    OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
-                    OlpSupportLine = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', // TODO оно ли это
-                    OlpImportant = '{importancy}', // TODO параметр не выставляется
-                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                    OlpIsAuthorVIP = '{clientVip}',
-                    Account = '{clientCompanyId}',
-                    Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{}', // TODO
-                WHERE ID = '{caseId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
+                                 OlpSupportLine = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', // TODO оно ли это
+                                 OlpImportant = '{importancy}', // TODO параметр не выставляется
+                                 OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                                 OlpIsAuthorVIP = '{clientVip}',
+                                 Account = '{clientCompanyId}',
+                                 Category = '{caseCategory}',
+                                 OlpServiceGroupForOrder = '{}', // TODO
+                                 WHERE ID = '{caseId}'
+                                     """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void SetSecondLineSupport()
@@ -959,39 +987,39 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE \"Case\"
                 SET 
-                    OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
-                    OlpSupportLine = '{OLP_SECOND_LINE_SUPPORT}', // TODO оно ли это
-                    OlpImportant = '{importancy}', // TODO параметр не выставляется
-                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                    OlpIsAuthorVIP = '{clientVip}',
-                    Account = '{clientCompanyId}',
-                    Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{}', // TODO
-                WHERE ID = '{caseId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
+                                 OlpSupportLine = '{OLP_SECOND_LINE_SUPPORT}', // TODO оно ли это
+                                 OlpImportant = '{importancy}', // TODO параметр не выставляется
+                                 OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                                 OlpIsAuthorVIP = '{clientVip}',
+                                 Account = '{clientCompanyId}',
+                                 Category = '{caseCategory}',
+                                 OlpServiceGroupForOrder = '{}', // TODO
+                                 WHERE ID = '{caseId}'
+                                     """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void SetThirdLineSupport()
         {
-            
+
             string sql = $"""
                 UPDATE \"Case\"
                 SET 
-                    OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
-                    OlpSupportLine = '{OLP_THIRD_LINE_SUPPORT}', // TODO оно ли это
-                    OlpImportant = '{CASE_IMPORTANCY_IMPOTANT}', // TODO параметр не выставляется
-                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                    OlpIsAuthorVIP = '{clientVip}',
-                    Account = '{clientCompanyId}',
-                    Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{}', // TODO
-                    Owner = '{}'
-                WHERE ID = '{caseId}'
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
+                                 OlpSupportLine = '{OLP_THIRD_LINE_SUPPORT}', // TODO оно ли это
+                                 OlpImportant = '{CASE_IMPORTANCY_IMPOTANT}', // TODO параметр не выставляется
+                                 OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                                 OlpIsAuthorVIP = '{clientVip}',
+                                 Account = '{clientCompanyId}',
+                                 Category = '{caseCategory}',
+                                 OlpServiceGroupForOrder = '{}', // TODO
+                                 Owner = '{}'
+                                     WHERE ID = '{caseId}'
+                                     """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void SendBookAutoreply()
@@ -1004,10 +1032,10 @@ namespace AnseremPackage
             string sql = $"""
                 UPDATE Activity
                 SET IsAutoSubmitted = '{true}',
-                WHERE id = '{parentActivityId}' // TODO Is Parent activity Id needed?
-                """;
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			query.Execute();
+                    WHERE id = '{parentActivityId}' // TODO Is Parent activity Id needed?
+                        """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private void SendEisRequest()
@@ -1034,6 +1062,5 @@ namespace AnseremPackage
         {
             // TODO Элемент старого кода   
         }
-
     }
 }
