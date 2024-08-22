@@ -110,7 +110,7 @@ namespace AnseremPackage
             
             // Нет (СПАМ) - 2 ЭТАП
             if (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM) 
-            }
+            {
                 // Спам на обращении + 1 линия поддержки
                 UpdateCaseToFirstLineSupport();
                 return;
@@ -159,7 +159,7 @@ namespace AnseremPackage
             }
 
             // 1 Этап (Сотрудник/Поставщик)
-            if (isOlpFirstStage && (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER)
+            if (isOlpFirstStage && (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER))
             {
                 caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                 goto2();
@@ -571,57 +571,130 @@ namespace AnseremPackage
 			query.Execute();
        }
 
-        private Activity GetParentActivityFromCase()
-        {
-            var activity = new Activity(UserConnection);
-            Dictionary<string, object> conditions = new Dictionary<string, object> {
-                    { nameof(Activity.Id), contactId },
-                    { nameof(Activity.TypeId) "Email"} // TODO
-                };
+       private Activity GetParentActivityFromCase()
+       {
+           var activity = new Activity(UserConnection);
+           Dictionary<string, object> conditions = new Dictionary<string, object> {
+               { nameof(Activity.Id), contactId },
+                   { nameof(Activity.TypeId) "Email"} // TODO
+           };
 
-            if (activity.FetchFromDB(conditions))
-            {
-                return activity;
-            }
+           if (activity.FetchFromDB(conditions))
+           {
+               return activity;
+           }
         }
 
-        private Guid GetServiceGroup(Guid type)
-        {
-            string sql = $"""
-                SELECT * FROM OlpServiceGroup
-                WHERE Id IS NOT NULL AND
-                OlpSgEmail IS NOT NULL AND
-                OlpTypeGroupService = '{type}' // TODO
-                """;
-			
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			
-			using (var db = UserConnection.EnsureDBConnection())
-			{
-				using (var reader = query.ExecuteReader(db))
-				{
-					while (reader.Read())
-                    {
-                        // TODO Тут должна быть ебанная хуйня из "Найти основную группу по email в кому/копия"
-					}
-				}
-			}
-        }
+       private Guid GetServiceGroup(Guid type)
+       {
+           string sql = $"""
+               SELECT * FROM OlpServiceGroup
+               WHERE Id IS NOT NULL AND
+               OlpSgEmail IS NOT NULL AND
+               OlpTypeGroupService = '{type}' // TODO
+               """;
+
+           CustomQuery query = new CustomQuery(UserConnection, sql);
+
+           using (var db = UserConnection.EnsureDBConnection())
+           {
+               using (var reader = query.ExecuteReader(db))
+               {
+                   while (reader.Read())
+                   {
+                       // TODO Тут должна быть ебанная хуйня из "Найти основную группу по email в кому/копия"
+                   }
+               }
+           }
+       }
 
         private void SetTravelParameter()
         {
-            if (!string.IsNullOrEmpty(activity.theme))
+            var title = activity.GetTypedColumnValue<string>("Title");
+            var body = activity.GetTypedColumnValue<string>("Body");
+            if (!string.IsNullOrEmpty(title))
             {
-                // TODO
+                themetravel = "";
+                if (!string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("TRAVEL-"))
+                {
+
+                    var regex = new Regex(@"(?<=TRAVEL-)\d+");
+
+                    foreach (Match match in regex.Matches(theme))
+                    {
+                        themetravel = match.Value.ToString();
+                        if(!string.IsNullOrEmpty(themetravel))
+                        {
+                            themetravel = "TRAVEL-" + themetravel;
+                            break;
+                        }
+                    }
+                }
             }
+            
+            if (string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(body) && body.ToUpper().Contains("TRAVEL-"))
+            {
+
+                var regex = new Regex(@"(?<=TRAVEL-)\d+");
+                
+                foreach (Match match in regex.Matches(body))
+                {
+                    themetravel = match.Value.ToString();
+                    if(!string.IsNullOrEmpty(themetravel))
+                    {
+                        themetravel = "TRAVEL-" + themetravel;
+                        break;
+                    }
+                }
+
+            }
+            
+            string sql = $"""
+                UPDATE 
+                    \"Case\" 
+                SET 
+                    OlpTRAVELNumber = '{themetravel}',
+                WHERE 
+                    id = '{caseId}'
+            """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
+
         }
 
         private void SetSiburParameter()
         {
-            if (!string.IsNullOrEmpty(siburTheme))
+            var title = activity.GetTypedColumnValue<string>("Title");
+            var body = activity.GetTypedColumnValue<string>("Body");
+
+            if (!string.IsNullOrEmpty(title))
             {
-               // TODO  
+                if(string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("ЗАЯВКА ПО РЕЛОКАЦИИ_")) 
+                {
+
+                    var regexurgent = new Regex(@"(?<=Заявка по релокации_)\[(.+)\]");
+                    foreach (Match match in regexurgent.Matches(theme))
+                    {
+                        themetravel = match.Value.ToString();
+                        if(!string.IsNullOrEmpty(themetravel)){
+                            themetravel = "Заявка по релокации_" + themetravel;
+                            break;
+                        }
+                    }
+                    Set<string>("SiburTheme", themetravel);
+                }
             }
+            
+            string sql = $"""
+                UPDATE 
+                    \"Case\" 
+                SET 
+                    OlpReloThemeSibur = '{themetravel}',
+                WHERE 
+                    id = '{caseId}'
+                """;
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+            query.Execute();
         }
 
         private Guid GetAccountIdFromAccountCommunication()
@@ -630,38 +703,38 @@ namespace AnseremPackage
                 SELECT TOP 1 * FROM AccountCommunication
                 WHERE 
                 (
-                    CommunicationType = '{Почтовый домен}' // TODO 
-                    AND 
-                    Number = '{Домен Email}' // TODO
+                 CommunicationType = '{Почтовый домен}' // TODO 
+                 AND 
+                 Number = '{Домен Email}' // TODO
                 )
                 OR
                 (
-                    CommunicationType = '{Email}' // TODO 
-                    AND 
-                    Number = '{Email}' // TODO
+                 CommunicationType = '{Email}' // TODO 
+                 AND 
+                 Number = '{Email}' // TODO
                 )
                 """;
-			
-			CustomQuery query = new CustomQuery(UserConnection, sql);
-			
-			using (var db = UserConnection.EnsureDBConnection())
-			{
-				using (var reader = query.ExecuteReader(db))
-				{
-					if (reader.Read())
+
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+
+            using (var db = UserConnection.EnsureDBConnection())
+            {
+                using (var reader = query.ExecuteReader(db))
+                {
+                    if (reader.Read())
                     {
                         return reader.GetColumnValue<Guid>("Account");
-					}
-				}
-			}
+                    }
+                }
+            }
         }
 
         private void FetchAccountById(Guid accountId)
         {
             var account = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
-                    { nameof(Account.Id), accountId },
-                };
+                { nameof(Account.Id), accountId },
+            };
 
             if (account.FetchFromDB(conditions))
             {
