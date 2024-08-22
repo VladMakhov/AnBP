@@ -1034,10 +1034,12 @@ namespace AnseremPackage
         private void SetAutonotification()
         {
             string sql = $"""
-                UPDATE Activity
-                SET IsAutoSubmitted = '{true}',
-                    WHERE id = '{parentActivityId}' // TODO Is Parent activity Id needed?
-                        """;
+                UPDATE
+                    Activity
+                SET 
+                    IsAutoSubmitted = '{true}',
+                WHERE id = '{parentActivityId}' // TODO Is Parent activity Id needed?
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
