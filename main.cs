@@ -27,11 +27,17 @@ namespace AnseremPackage
 
         private const Guid OLP_DUTY_SERVICE_GROUP = new Guid("3A8B2C01-7A4D-4D5D-A7EA-8563BF6220B9"); 
 
+        // OLP:ГО Общая 1 линия поддержки
         private const Guid OLP_GENERAL_FIRST_LINE_SUPPORT = new Guid("64833178-8B17-4BB6-8CD9-6165B9B82637"); 
 
-        private const Guid OLP_SECOND_LINE_SUPPORT = new Guid("DF594796-8E36-41BC-8EDD-732967053947"); 
+        // OLP:ОР 1 линия поддержки
+        private const Guid OLP_OR_FIRST_LINE_SUPPORT = new Guid("B401FC39-77E4-4B53-985F-21E68947A107"); 
 
-        private const Guid OLP_THIRD_LINE_SUPPORT = new Guid("3D0C8864-BF2F-4734-8A29-31873EB07440"); 
+        // OLP:ОР 2 линия поддержки
+        private const Guid OLP_OR_SECOND_LINE_SUPPORT = new Guid("DF594796-8E36-41BC-8EDD-732967053947"); 
+
+        // OLP:ОР 3 линия поддержки (старшие агенты)
+        private const Guid OLP_OR_THIRD_LINE_SUPPORT = new Guid("3D0C8864-BF2F-4734-8A29-31873EB07440"); 
 
         private const Guid CASE_URGENCY_TYPE_NOT_URGENT = new Guid("7a469f22-111d-4749-b5c2-e2a109a520a0");
 
@@ -139,13 +145,13 @@ namespace AnseremPackage
 
             /**
              * Добавить TRAVEL
-             * Поставить отменено на всех отмененных тревел обращениях // TODO
+             * Поставить отменено на всех отмененных тревел обращениях 
              */  
             SetTravelParameter(); 
 
             /**
              * Добавить Релокация - СИБУР
-             * Поставить отменено на всех отмененных тревел обращениях - Копия // TODO
+             * Поставить отменено на всех отмененных тревел обращениях - Копия 
              */
             SetSiburParameter(); 
 
@@ -158,7 +164,7 @@ namespace AnseremPackage
                  * Категория (Сотрудник/Поставщик) -2 этап
                  * Выставить 1 линию поддержки
                  */
-                SetFirstLineSupport();
+                UpdateCaseToFirstLineSupport();
                 return;
             }
 
@@ -185,7 +191,7 @@ namespace AnseremPackage
                     }
                     else
                     {
-                        SetFirstLineSupport();
+                        UpdateCaseToFirstLineSupport();
                     }
                 }
 
@@ -200,7 +206,7 @@ namespace AnseremPackage
                     }
                     else
                     {
-                        SetFirstLineSupport();
+                        UpdateCaseToFirstLineSupport();
                     }
                 }
 
@@ -369,7 +375,6 @@ namespace AnseremPackage
             // Нет
             else 
             {
-                // TODO Параметры придумать надо
                 goto4();
             }
         }
@@ -393,7 +398,7 @@ namespace AnseremPackage
             else if (extraServiceGroup && isVipClient)
             {
                 selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
-                UpdateCaseToFirstLineSupportExtended();
+                SetFirstLineSupport();
                 goto7();
             }
         }
@@ -542,35 +547,17 @@ namespace AnseremPackage
         private void UpdateCaseToFirstLineSupport()
         {
             string sql = $"""
-                UPDATE \"Case\"
+                UPDATE 
+                    \"Case\"
                 SET 
-                OlpGroupServices = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', // TODO ГО Общая 1 линия поддержки
-                                 OlpSupportLine = '{OLP_DUTY_SERVICE_GROUP}', // TODO ОР 1 линия поддержки
-                                 OlpImportant = '{CASE_IMPORTANCY_NOT_IMPOTANT}', // TODO
-                                 OlpUrgency = '{CASE_URGENCY_TYPE_URGENT}', // TODO
-                                 Category = '{caseCategory}'
-                                     WHERE ID = '{caseId}'
-                                     """;
-            CustomQuery query = new CustomQuery(UserConnection, sql);
-            query.Execute();
-        }
-
-
-        private void UpdateCaseToFirstLineSupportExtended()
-        {
-            string sql = $"""
-                UPDATE \"Case\"
-                SET 
-                OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
-                                 OlpSupportLine = '{OLP_DUTY_SERVICE_GROUP}', // TODO оно ли это
-                                 OlpImportant = '{importancy}', // TODO параметр не выставляется
-                                 OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                                 OlpIsAuthorVIP = '{clientVip}',
-                                 Account = '{clientCompanyId}',
-                                 Category = '{caseCategory}',
-                                 OlpServiceGroupForOrder = '{}', // TODO
-                                 WHERE ID = '{caseId}'
-                                     """;
+                    OlpGroupServices = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', 
+                    OlpSupportLine = '{OLP_OR_FIRST_LINE_SUPPORT}',
+                    OlpImportant = '{CASE_IMPORTANCY_NOT_IMPOTANT}',
+                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                    Category = '{caseCategory}'
+                WHERE 
+                    Id = '{caseId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -657,10 +644,10 @@ namespace AnseremPackage
                 UPDATE 
                 \"Case\" 
                 SET 
-                OlpTRAVELNumber = '{themetravel}',
-                                WHERE 
-                                    id = '{caseId}'
-                                    """;
+                    OlpTRAVELNumber = '{themetravel}',
+                WHERE 
+                    id = '{caseId}'
+                """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
     
@@ -788,12 +775,13 @@ namespace AnseremPackage
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
             var companyId = account.GetTypedColumnValue<Guid>("Id");
             string sql = $"""
-                UPDATE Contact
+                UPDATE 
+                    Contact
                 SET 
-                Type = '{type}',
-                     Account = '{companyId}'
-                         WHERE id = '{contactId}'
-                         """;
+                    Type = '{type}',
+                    Account = '{companyId}'
+                WHERE id = '{contactId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -802,12 +790,14 @@ namespace AnseremPackage
         {
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
             string sql = $"""
-                UPDATE Contact
+                UPDATE 
+                    Contact
                 SET 
-                Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', // TODO
-                     Account = '{companyId}' // TODO
-                         WHERE id = '{contactId}'
-                         """;
+                    Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', // TODO
+                    Account = '{companyId}' // TODO
+                WHERE
+                    Id = '{contactId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -815,24 +805,26 @@ namespace AnseremPackage
         private void RefreshContact(Eis eis, Guid accountId, Guid contactId)
         {
             string sql = $"""
-                UPDATE Contact
+                UPDATE
+                    Contact
                 SET
-                Email = '{Email}', // TODO
-                      Account = '{accountId}',
-                      OlpBooleanAeroclubCheck = 1,
-                      OlpSignVip = '{eis.isVip}',
-                      OlpContactProfileConsLink = '{eis.profileLink}',
-                      OlpLnFnPat = '{}', // TODO
-                      GivenName = '{eis.rusFirstName}',
-                      MiddleName = '{eis.rusMiddleName}',
-                      Surname = '{eis.rusSurname}',
-                      OlpSignVipPlatf = '{eis.isVipPlatform}',
-                      OlpIsAuthorizedPerson = '{eis.isAuthorizedPerson}',
-                      OlpIsContactPerson = '{eis.isContactPerson}',
-                      Type = '{CONTACT_TYPE_CLIENT}',
-                      OlpExternalContId = '{eis.idOut}'
-                          WHERE id = '{contactId}'
-                          """;
+                    Email = '{Email}', // TODO
+                    Account = '{accountId}',
+                    OlpBooleanAeroclubCheck = 1,
+                    OlpSignVip = '{eis.isVip}',
+                    OlpContactProfileConsLink = '{eis.profileLink}',
+                    OlpLnFnPat = '{}', // TODO
+                    GivenName = '{eis.rusFirstName}',
+                    MiddleName = '{eis.rusMiddleName}',
+                    Surname = '{eis.rusSurname}',
+                    OlpSignVipPlatf = '{eis.isVipPlatform}',
+                    OlpIsAuthorizedPerson = '{eis.isAuthorizedPerson}',
+                    OlpIsContactPerson = '{eis.isContactPerson}',
+                    Type = '{CONTACT_TYPE_CLIENT}',
+                    OlpExternalContId = '{eis.idOut}'
+                WHERE 
+                    Id = '{contactId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -842,13 +834,15 @@ namespace AnseremPackage
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             var accountId = account.GetTypedColumnValue<Guid>("Id");
             string sql = $"""
-                UPDATE Contact
+                UPDATE 
+                    Contact
                 SET
-                Email = '{Email}', // TODO
-                      Account = '{accountId}',
-                      Type = '{CONTACT_TYPE_CLIENT}',
-                      WHERE id = '{contactId}'
-                          """;
+                    Email = '{Email}', // TODO
+                    Account = '{accountId}',
+                    Type = '{CONTACT_TYPE_CLIENT}',
+                WHERE 
+                    Id = '{contactId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -857,12 +851,14 @@ namespace AnseremPackage
         {
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             string sql = $"""
-                UPDATE Contact
+                UPDATE 
+                    Contact
                 SET
-                Email = '{Email}', // TODO
-                      Type = '{CONTACT_TYPE_CLIENT}',
-                      WHERE id = '{contactId}'
-                          """;
+                    Email = '{Email}', // TODO
+                    Type = '{CONTACT_TYPE_CLIENT}',
+                WHERE 
+                    Id = '{contactId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -906,10 +902,13 @@ namespace AnseremPackage
         private void AddAccountToEmail()
         {
             string sql = $"""
-                UPDATE Activity
-                SET Account = '{clientCompanyId}', // TODO
-                    WHERE id = '{parentActivityId}'
-                        """;
+                UPDATE 
+                    Activity
+                SET 
+                    Account = '{clientCompanyId}', 
+                WHERE 
+                    Id = '{parentActivityId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -964,62 +963,67 @@ namespace AnseremPackage
 
         private void SetFirstLineSupport()
         {
-
             string sql = $"""
-                UPDATE \"Case\"
+                UPDATE 
+                   \"Case\"
                 SET 
-                OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
-                                 OlpSupportLine = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', // TODO оно ли это
-                                 OlpImportant = '{importancy}', // TODO параметр не выставляется
-                                 OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                                 OlpIsAuthorVIP = '{clientVip}',
-                                 Account = '{clientCompanyId}',
-                                 Category = '{caseCategory}',
-                                 OlpServiceGroupForOrder = '{}', // TODO
-                                 WHERE ID = '{caseId}'
-                                     """;
+                    OlpGroupServices = '{selectedServiceGroupId}',
+                    OlpSupportLine = '{OLP_OR_FIRST_LINE_SUPPORT}',
+                    OlpImportant = '{importancy}',
+                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                    OlpIsAuthorVIP = '{clientVip}',
+                    Account = '{clientCompanyId}',
+                    Category = '{caseCategory}',
+                    OlpServiceGroupForOrder = '{}', // TODO
+                WHERE 
+                    Id = '{caseId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
+
         }
 
         private void SetSecondLineSupport()
         {
             string sql = $"""
-                UPDATE \"Case\"
+                UPDATE 
+                   \"Case\"
                 SET 
-                OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
-                                 OlpSupportLine = '{OLP_SECOND_LINE_SUPPORT}', // TODO оно ли это
-                                 OlpImportant = '{importancy}', // TODO параметр не выставляется
-                                 OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                                 OlpIsAuthorVIP = '{clientVip}',
-                                 Account = '{clientCompanyId}',
-                                 Category = '{caseCategory}',
-                                 OlpServiceGroupForOrder = '{}', // TODO
-                                 WHERE ID = '{caseId}'
-                                     """;
+                    OlpGroupServices = '{selectedServiceGroupId}',
+                    OlpSupportLine = '{OLP_OR_SECOND_LINE_SUPPORT}',
+                    OlpImportant = '{importancy}',
+                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                    OlpIsAuthorVIP = '{clientVip}',
+                    Account = '{clientCompanyId}',
+                    Category = '{caseCategory}',
+                    OlpServiceGroupForOrder = '{}', // TODO
+                WHERE 
+                    Id = '{caseId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
 
         private void SetThirdLineSupport()
         {
-
             string sql = $"""
-                UPDATE \"Case\"
+                UPDATE 
+                   \"Case\"
                 SET 
-                OlpGroupServices = '{selectedServiceGroupId}', // TODO оно ли это
-                                 OlpSupportLine = '{OLP_THIRD_LINE_SUPPORT}', // TODO оно ли это
-                                 OlpImportant = '{CASE_IMPORTANCY_IMPOTANT}', // TODO параметр не выставляется
-                                 OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                                 OlpIsAuthorVIP = '{clientVip}',
-                                 Account = '{clientCompanyId}',
-                                 Category = '{caseCategory}',
-                                 OlpServiceGroupForOrder = '{}', // TODO
-                                 Owner = '{}'
-                                     WHERE ID = '{caseId}'
-                                     """;
+                    OlpGroupServices = '{selectedServiceGroupId}',
+                    OlpSupportLine = '{OLP_OR_THIRD_LINE_SUPPORT}',
+                    OlpImportant = '{CASE_IMPORTANCY_IMPOTANT}',
+                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                    OlpIsAuthorVIP = '{clientVip}',
+                    Account = '{clientCompanyId}',
+                    Category = '{caseCategory}',
+                    OlpServiceGroupForOrder = '{}', // TODO
+                WHERE 
+                    Id = '{caseId}'
+            """;
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
+ 
         }
 
         private void SendBookAutoreply()
