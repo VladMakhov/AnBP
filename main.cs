@@ -510,12 +510,16 @@ namespace AnseremPackage
 
         private bool GetOlpFirstStage()
         {
-            string sql = $"""
-                SELECT BooleanValue FROM SysSettingsValue 
-                WHERE SysSettingsId = (
+            string sql = @$"
+                SELECT 
+                    BooleanValue 
+                FROM 
+                    SysSettingsValue 
+                WHERE 
+                    SysSettingsId = (
                         SELECT id FROM SysSettings WHERE Code LIKE 'OLPIsFirstStepToPROD'
                         )
-                """;
+                ";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -546,7 +550,7 @@ namespace AnseremPackage
 
         private void UpdateCaseToFirstLineSupport()
         {
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                     \"Case\"
                 SET 
@@ -557,7 +561,7 @@ namespace AnseremPackage
                     Category = '{caseCategory}'
                 WHERE 
                     Id = '{caseId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -578,12 +582,12 @@ namespace AnseremPackage
 
         private Guid GetServiceGroup(Guid type)
         {
-            string sql = $"""
+            string sql = @$"
                 SELECT * FROM OlpServiceGroup
                 WHERE Id IS NOT NULL AND
                 OlpSgEmail IS NOT NULL AND
                 OlpTypeGroupService = '{type}' // TODO
-                """;
+                ";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -640,18 +644,7 @@ namespace AnseremPackage
 
             }
 
-            string sql = $"""
-                UPDATE 
-                \"Case\" 
-                SET 
-                    OlpTRAVELNumber = '{themetravel}',
-                WHERE 
-                    id = '{caseId}'
-                """;
-            CustomQuery query = new CustomQuery(UserConnection, sql);
-            query.Execute();
-    
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                     \"Case\" 
                 SET 
@@ -665,7 +658,8 @@ namespace AnseremPackage
                     OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
                 WHERE 
                     statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}' 
-                """;
+            ";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();    
 
@@ -693,7 +687,7 @@ namespace AnseremPackage
                 }
             }
 
-            string sql = $"""
+            string sql = @$" 
                 UPDATE 
                     \"Case\" 
                 SET 
@@ -707,14 +701,14 @@ namespace AnseremPackage
                     OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
                 WHERE 
                     statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}' 
-                """;
+                ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();    
         }
 
         private Guid GetAccountIdFromAccountCommunication()
         {
-            string sql = $"""
+            string sql = @$"
                 SELECT TOP 1 * FROM AccountCommunication
                 WHERE 
                 (
@@ -728,7 +722,7 @@ namespace AnseremPackage
                  AND 
                  Number = '{Email}' // TODO
                 )
-                """;
+            ";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -774,14 +768,14 @@ namespace AnseremPackage
         {
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
             var companyId = account.GetTypedColumnValue<Guid>("Id");
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                     Contact
                 SET 
                     Type = '{type}',
                     Account = '{companyId}'
                 WHERE id = '{contactId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -789,7 +783,7 @@ namespace AnseremPackage
         private void SetSpamOnCase()
         {
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                     Contact
                 SET 
@@ -797,14 +791,14 @@ namespace AnseremPackage
                     Account = '{companyId}' // TODO
                 WHERE
                     Id = '{contactId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
 
         private void RefreshContact(Eis eis, Guid accountId, Guid contactId)
         {
-            string sql = $"""
+            string sql = @$"
                 UPDATE
                     Contact
                 SET
@@ -824,7 +818,7 @@ namespace AnseremPackage
                     OlpExternalContId = '{eis.idOut}'
                 WHERE 
                     Id = '{contactId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -833,7 +827,7 @@ namespace AnseremPackage
         {
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             var accountId = account.GetTypedColumnValue<Guid>("Id");
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                     Contact
                 SET
@@ -842,7 +836,7 @@ namespace AnseremPackage
                     Type = '{CONTACT_TYPE_CLIENT}',
                 WHERE 
                     Id = '{contactId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -850,7 +844,7 @@ namespace AnseremPackage
         private void RefreshContactTypeAndEmail()
         {
             var contactId contact.GetTypedColumnValue<Guid>("Id");
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                     Contact
                 SET
@@ -858,7 +852,7 @@ namespace AnseremPackage
                     Type = '{CONTACT_TYPE_CLIENT}',
                 WHERE 
                     Id = '{contactId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -866,11 +860,11 @@ namespace AnseremPackage
         private void GetHoldingFromAccountBindedToEis()
         {
             var contactId contact.GetTypedColumnValue<Guid>("Id");
-            string sql = $"""
+            string sql = @$"
                 SELECT OlpHoldingId FROM Contact c 
                 INNER JOIN Account a ON a.Id = c.AccountId
                 WHERE c.Id = '{contactid}'
-                """;
+                ";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -901,14 +895,14 @@ namespace AnseremPackage
 
         private void AddAccountToEmail()
         {
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                     Activity
                 SET 
                     Account = '{clientCompanyId}', 
                 WHERE 
                     Id = '{parentActivityId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -963,7 +957,7 @@ namespace AnseremPackage
 
         private void SetFirstLineSupport()
         {
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                    \"Case\"
                 SET 
@@ -977,7 +971,7 @@ namespace AnseremPackage
                     OlpServiceGroupForOrder = '{}', // TODO
                 WHERE 
                     Id = '{caseId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
 
@@ -985,7 +979,7 @@ namespace AnseremPackage
 
         private void SetSecondLineSupport()
         {
-            string sql = $"""
+            string sql = @$" 
                 UPDATE 
                    \"Case\"
                 SET 
@@ -999,14 +993,14 @@ namespace AnseremPackage
                     OlpServiceGroupForOrder = '{}', // TODO
                 WHERE 
                     Id = '{caseId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
 
         private void SetThirdLineSupport()
         {
-            string sql = $"""
+            string sql = @$"
                 UPDATE 
                    \"Case\"
                 SET 
@@ -1020,7 +1014,7 @@ namespace AnseremPackage
                     OlpServiceGroupForOrder = '{}', // TODO
                 WHERE 
                     Id = '{caseId}'
-            """;
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
  
@@ -1033,13 +1027,14 @@ namespace AnseremPackage
 
         private void SetAutonotification()
         {
-            string sql = $"""
+            string sql = @$"
                 UPDATE
                     Activity
                 SET 
                     IsAutoSubmitted = '{true}',
-                WHERE id = '{parentActivityId}' // TODO Is Parent activity Id needed?
-            """;
+                WHERE 
+                    id = '{parentActivityId}' // TODO Is Parent activity Id needed?
+            ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
