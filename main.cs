@@ -14,7 +14,7 @@ namespace AnseremPackage
     [EntityEventListener(SchemaName = nameof(Case))]
     private class ProcessingEmailRequestListener : BaseEntityEventListener
     { 
-        // CONSTS
+        /**CONSTS**/
         private const Guid SERVICE_GROUP_TYPE_MAIN = new Guid("C82CA04F-5319-4611-A6EE-64038BA89D71");
 
         private const Guid SERVICE_GROUP_TYPE_EXTRA = new Guid("DC1B5435-6AA1-4CCD-B950-1C4ADAB1F8AD");
@@ -72,9 +72,9 @@ namespace AnseremPackage
         private const Guid COMMUNICATION_TYPE_EMAIL = new Guid("EE1C85C3-CFCB-DF11-9B2A-001D60E938C6");
         
         private const Guid ACTIVITY_TYPE_EMAIL = new Guid("E2831DEC-CFC0-DF11-B00F-001D60E938C6");
-        // CONSTS
+        /**CONSTS**/
 
-        // PARAMS 
+        /**PARAMS**/
         private Entity Entity { get; set; }
 
         private UserConnection UserConnection { get; set; }
@@ -118,7 +118,7 @@ namespace AnseremPackage
         private Guid email { get; set; }
         
         private Guid copies { get; set; }
-        // PARAMS 
+        /**PARAMS**/
 
         /**LEGACY**/
         private Guid MainGroupIdByEmail { get; set; }
@@ -141,7 +141,7 @@ namespace AnseremPackage
         
         private Guid ContactIdForEmailAndPhone { get; set; }
         
-        private CompositeObjectList<CompositeObject> ProcessSchemaParameterServiceGroupCollection{ get; set; }
+        private CompositeObjectList<CompositeObject> ProcessSchemaParameterServiceGroupCollection { get; set; }
         
         private bool ProcessSchemaParameterIsDutyGroup { get; set; }
         
