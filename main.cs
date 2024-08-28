@@ -120,7 +120,7 @@ namespace AnseremPackage
         private Guid copies { get; set; }
         // PARAMS 
 
-        // LEGACY
+        /**LEGACY**/
         private Guid MainGroupIdByEmail { get; set; }
         
         private string MainGroupEmailBox { get; set; }
@@ -139,15 +139,15 @@ namespace AnseremPackage
         
         private string ExtraSheduleTypeByMail { get; set; }
         
-        private Guid { get; set; }
+        private Guid ContactIdForEmailAndPhone { get; set; }
+        
+        private CompositeObjectList<CompositeObject> ProcessSchemaParameterServiceGroupCollection{ get; set; }
+        
+        private bool ProcessSchemaParameterIsDutyGroup { get; set; }
         
         private Guid { get; set; }
+        /**LEGACY**/
         
-        private Guid { get; set; }
-        
-        private Guid { get; set; }
-        // LEGACY
-
         public override void OnInserting(object sender, EntityAfterEventArgs e)
         {
             base.OnInserting(sender, e);
@@ -169,9 +169,9 @@ namespace AnseremPackage
             // email родительской активности
             activity = GetParentActivityFromCase();
 
-            email = activity.GetTypedColumnValue<string>("Recepient"); // TODO Check for correct grammar
+            email = activity.GetTypedColumnValue<string>("Recepient"); // TODO Check for correct parameter
 
-            copies = activity.GetTypedColumnValue<string>("CopyRecepient"); // TODO Check for correct grammar
+            copies = activity.GetTypedColumnValue<string>("CopyRecepient"); // TODO Check for correct parameter
             
             /**
              * Чтение всех основных групп для выделения подходящей основной группы
@@ -272,9 +272,7 @@ namespace AnseremPackage
             {
                 account = FetchAccountByEis(eis.account);
 
-                RefreshEmails(); // TODO
-
-                RefreshPhones(); // TODO
+                RefreshEmailsAndPhones();
 
                 RefreshContact(account.GetTypedColumnValue<Guid>("Id"), contact.GetTypedColumnValue<Guid>("Id"));
 
@@ -343,14 +341,14 @@ namespace AnseremPackage
 
             AddAccountToEmail();
 
-            GetMainServiceGroup(); // TODO
+            GetMainServiceGroup();
 
             // Найдена ли группа по компании ВИП Платформа?
             // Да
             if (!isExtraServiceGroup && !isOlpFirstStage)
             {
                 // Найти ГО основную по графику работы 
-                GetMainServiceGroupBasedOnTimetable();
+                GetMainServiceGroupBasedOnTimetable(); // TODO
                 goto4();
             }
 
@@ -373,8 +371,7 @@ namespace AnseremPackage
                 // Найдена ГО по компании и графику клиента и почтовому адресу
                 else if (!extraServiceGroup)
                 {
-                    // TODO Переделать под кастомные автоответы!
-                    SendBookAutoreply();
+                    SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                     SetAutonotification();
                     goto6();
                 }
@@ -402,7 +399,7 @@ namespace AnseremPackage
                         }
                         else if (!selectedServiceGroupId && (!contact.email.contains("NOREPLY@") && !contact.email.contains("NO-REPLY@") && !contact.email.contains("EDM@npk.team")))
                         {
-                            SendBookAutoreply();
+                            SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                             SetAutonotification();
                             goto6();
                         }
@@ -461,8 +458,8 @@ namespace AnseremPackage
                 GetMainServiceGroupForContact();
 
                 selectedServiceGroupId = selectedServiceGroupId == Guid.Empty ? etraServiceGroupFromAndCopy : selectedServiceGroupId;
-
-                SendBookAutoreply();
+                
+                SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                 SetAutonotification();
                 goto6();
             }
@@ -642,7 +639,7 @@ namespace AnseremPackage
 
                     while (reader.Read())
                     {
-
+                        /**LEGACY**/
                         string EmailBoxName = "";
                         string EmailBoxALias = "";
                         
@@ -715,6 +712,7 @@ namespace AnseremPackage
                 }
             }
             return;
+            /**LEGACY**/
         }
 
         private Guid GetServiceGroupMain()
@@ -737,6 +735,7 @@ namespace AnseremPackage
                     while (reader.Read())
                     {
 
+                        /**LEGACY**/
                         string EmailBoxName = "";
                         string EmailBoxALias = "";
 
@@ -820,6 +819,7 @@ namespace AnseremPackage
                 }
             }
             return;
+            /**LEGACY**/
         }
 
         private void SetTravelParameter()
@@ -1141,7 +1141,75 @@ namespace AnseremPackage
 
         private void GetMainServiceGroup()
         {
-            // TODO
+            /**LEGACY**/
+
+            //Считать признак поиска в ЕИС
+            //Считать Ид. компании 
+            Guid companyid = clientCompanyId;
+            //Считать Ид. холдинга
+            Guid holdingid = holding;
+            //Считать ид. ящика из ГО по почте
+            Guid MainEmailBoxIdForRegId = MainEmailBoxIdForReg;
+            //Считать ВИП Платформа
+            bool isvipplatform = clientVipPlatform;
+
+            EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            esq.PrimaryQueryColumn.IsAlwaysSelect = true;	
+
+            esq.AddColumn("[OlpGroupServiceAccount:OlpServiceGroupDetail:Id].OlpAccount"); //Ид.компании-холдинга из детали
+            var OlpTypeServiceGroup = esq.AddColumn("OlpTypeGroupService.Name");
+            var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
+            var orFilterGroup = new EntitySchemaQueryFilterCollection(esq, LogicalOperationStrict.Or);
+
+            //Считать данные раздела ГО по основным группам/ВИП платформа
+            if (isvipplatform == true)
+            {
+                esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpTypeGroupService.Name", "ВИП Платформа"));	
+            }
+            else
+            {
+                esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpTypeGroupService.Name", "Основная группа"));	
+
+                if(MainEmailBoxIdForRegId != Guid.Empty)
+                {
+                    esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpSgEmail.Id", MainEmailBoxIdForRegId));
+                }
+
+                // Компания || Холдинг
+                orFilterGroup.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpGroupServiceAccount:OlpServiceGroupDetail:Id].OlpAccount", companyid));
+                orFilterGroup.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpGroupServiceAccount:OlpServiceGroupDetail:Id].OlpAccount", holdingid));
+                esq.Filters.Add(orFilterGroup);
+            }  
+
+            var list = new CompositeObjectList<CompositeObject>();
+            EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+
+            //Идем в цикл если коллекция не пустая
+            if (entityCollection.IsNotEmpty()) 
+            {
+                foreach (var servicegroups in entityCollection) 
+                {
+
+                    var item = new CompositeObject();
+                    var servicegroupid = servicegroups.GetTypedColumnValue<Guid>("Id");
+                    var servicegroupttid = servicegroups.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
+                    var servicegrouptype = servicegroups.GetTypedColumnValue<string>(OlpTypeServiceGroup.Name);
+
+                    item["ProcessSchemaParameterServiceGroupId"] = servicegroupid;
+                    item["ProcessSchemaParamServiceTimeTableId"] = servicegroupttid;
+                    Set("ServiceGroupForOrder",servicegroupid);
+
+                    list.Add(item);
+                }
+
+                ProcessSchemaParameterServiceGroupCollection = list; 
+            }        
+            else
+            { 
+                //Дежурная группа
+                ProcessSchemaParameterIsDutyGroup = true;
+            }
+            /**LEGACY**/
         }
 
         private void GetMainServiceGroupBasedOnTimetable()
@@ -1258,24 +1326,93 @@ namespace AnseremPackage
             query.Execute();
         }
 
-        private void SendEisRequest()
+        private void RefreshEmailsAndPhones()
         {
-            // TODO
-        }
+            /**LEGACY**/
 
-        private object GetAccountFromEisResponse()
-        {
-            // TODO
-        }
+            // обновление/добавление почты
+            var emailList = eis.OlpEmails_Out; 
+            var IdContact = ContactIdForEmailAndPhone; 
 
-        private void RefreshEmails()
-        {
-            // TODO Сюда ебануть код из "Обновление добавление почт и телефонов контакта"
-        }
+            foreach (var item in emailList) 
+            {
 
-        private void refreshPhones()
-        {
-            // TODO Сюда то же из "Обновление добавление почт и телефонов контакта"
+                NameEmail = item.OlpEAddress_Out;
+
+                if (string.IsNullOrEmpty(NameEmail)) { continue; }	// если нет почты то идти на следующий
+
+
+                // Существует email?
+                EntitySchemaQuery EsqContact = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "ContactCommunication");
+                EsqContact.PrimaryQueryColumn.IsAlwaysSelect = true;
+                EsqContact.ChunkSize = 1;
+                EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "Contact", IdContact));
+                EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "Number", NameEmail));
+                EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "CommunicationType", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6")));
+                EntityCollection CollectionEmail = EsqContact.GetEntityCollection(UserConnection);
+
+                if (CollectionEmail.IsEmpty())
+                {
+                    // continue;
+                    // Добавление почты контакту
+                    var emailContact = UserConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
+                    var entityemailContact = emailContact.CreateEntity(UserConnection);
+
+                    entityemailContact.UseAdminRights = false;
+                    entityemailContact.SetDefColumnValues();
+                    entityemailContact.SetColumnValue("ContactId", IdContact );
+                    entityemailContact.SetColumnValue("Number", NameEmail);
+                    entityemailContact.SetColumnValue("CommunicationTypeId", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6"));
+                    entityemailContact.Save();
+                }
+
+            }
+
+            // обновление/добавление телефона
+            var listPhone = eis.OlpPhones_Out);
+            var IdContact1 = ContactIdForEmailAndPhone;
+
+            foreach (var item1 in listPhone) 
+            {
+                NamePhone = item1.OlpPNumber_Out;
+                Kind = item1.OlpPKind_Out;
+
+                if (string.IsNullOrEmpty(NamePhone)) { continue; }	// если нет телефона то идти на следующий
+
+                var typeIdPhone = Guid.Empty;
+
+                // найти тип телефона
+                if (Kind == "mobile") { typeIdPhone = Guid.Parse("d4a2dc80-30ca-df11-9b2a-001d60e938c6"); }
+                if (Kind == "work") { typeIdPhone = Guid.Parse("3dddb3cc-53ee-49c4-a71f-e9e257f59e49"); }
+                if (Kind == "home") { typeIdPhone = Guid.Parse("0da6a26b-d7bc-df11-b00f-001d60e938c6"); } 
+                if (string.IsNullOrEmpty(Kind)) { typeIdPhone = Guid.Parse("21c0d693-9a52-43fa-b7f1-c6d8b53975d4"); }
+
+                // Существует телефон?
+                EntitySchemaQuery EsqContactPhone = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "ContactCommunication");
+                EsqContactPhone.PrimaryQueryColumn.IsAlwaysSelect = true;
+                EsqContactPhone.ChunkSize = 1;
+                EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "Contact", IdContact1));
+                EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "Number", NamePhone));
+                EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "CommunicationType", typeIdPhone));
+                EntityCollection CollectionPhone = EsqContactPhone.GetEntityCollection(UserConnection);
+
+                if (CollectionPhone.IsEmpty())
+                {
+                    // Добавление почты контакту
+                    var phoneContact = UserConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
+                    var entityphoneContact = phoneContact.CreateEntity(UserConnection);
+
+                    entityphoneContact.UseAdminRights = false;
+                    entityphoneContact.SetDefColumnValues();
+                    entityphoneContact.SetColumnValue("ContactId", IdContact1 );
+                    entityphoneContact.SetColumnValue("Number", NamePhone);
+                    entityphoneContact.SetColumnValue("CommunicationTypeId", typeIdPhone);
+                    entityphoneContact.Save();
+                }
+
+            }
+            return;
+            /**LEGACY**/
         }
 
         private void CollectServicesForInsertion()
