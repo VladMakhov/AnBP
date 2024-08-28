@@ -166,14 +166,13 @@ namespace AnseremPackage
             }
 
             parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId");
-
             // email родительской активности
             activity = GetParentActivityFromCase();
 
             email = activity.GetTypedColumnValue<string>("Recepient"); // TODO Check for correct grammar
 
             copies = activity.GetTypedColumnValue<string>("CopyRecepient"); // TODO Check for correct grammar
-
+            
             /**
              * Чтение всех основных групп для выделения подходящей основной группы
              * Найти основную группу по email в кому/копия
@@ -725,7 +724,7 @@ namespace AnseremPackage
                 WHERE Id IS NOT NULL AND
                 OlpSgEmail IS NOT NULL AND
                 OlpTypeGroupService = '{SERVICE_GROUP_TYPE_MAIN}' 
-                ";
+                "; 
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
