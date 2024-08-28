@@ -66,6 +66,12 @@ namespace AnseremPackage
         private const Guid CASE_STATUS_CLOSED = new Guid("ae7f411e-f46b-1410-009b-0050ba5d6c38");
         
         private const Guid CASE_STATUS_CANCELED = new Guid("6e5f4218-f46b-1410-fe9a-0050ba5d6c38");
+ 
+        private const Guid COMMUNICATION_TYPE_EMAIL_DOMAIN = new Guid("9E3A0896-0CBE-4733-8013-1E70CB09800C");
+        
+        private const Guid COMMUNICATION_TYPE_EMAIL = new Guid("EE1C85C3-CFCB-DF11-9B2A-001D60E938C6");
+        
+        private const Guid ACTIVITY_TYPE_EMAIL = new Guid("E2831DEC-CFC0-DF11-B00F-001D60E938C6");
         // CONSTS
 
         // PARAMS 
@@ -159,7 +165,7 @@ namespace AnseremPackage
                 return;
             }
 
-            parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId")
+            parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId");
 
             // email родительской активности
             activity = GetParentActivityFromCase();
@@ -262,7 +268,7 @@ namespace AnseremPackage
         private void EisPath()
         {
             eis = SendEisRequest(); // TODO интеграция + объект ЕИС
-                                    // Да
+            // Да
             if (eis.code == 200 || (eis.code == 200 && contact.aeroclubCheck))
             {
                 account = FetchAccountByEis(eis.account);
@@ -480,7 +486,7 @@ namespace AnseremPackage
             {
                 importancy = CASE_IMPORTANCY_IMPOTANT;
 
-                if (serviceGroup.GetParentActivityFromCase<bool>("OlpDistribution"))
+                if (serviceGroup.GetTypedColumnValue<bool>("OlpDistribution"))
                 {
                     var thirdLineSupport = GetThirdLineSupport();
                     if (thirdLineSupport != Guid.Empty)
@@ -608,7 +614,7 @@ namespace AnseremPackage
             var activity = new Activity(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Activity.Id), contactId },
-                    { nameof(Activity.TypeId) "Email"} // TODO
+                    { nameof(Activity.TypeId) ACTIVITY_TYPE_EMAIL} 
             };
 
             if (activity.FetchFromDB(conditions))
@@ -875,7 +881,7 @@ namespace AnseremPackage
             ";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
-            query.Execute();    
+            query.Execute();
 
         }
 
@@ -926,15 +932,15 @@ namespace AnseremPackage
                 SELECT TOP 1 * FROM AccountCommunication
                 WHERE 
                 (
-                 CommunicationType = '{Почтовый домен}' // TODO 
+                 CommunicationType = '{COMMUNICATION_TYPE_EMAIL_DOMAIN}'
                  AND 
-                 Number = '{Домен Email}' // TODO
+                 Number = '{domain}' 
                 )
                 OR
                 (
-                 CommunicationType = '{Email}' // TODO 
+                 CommunicationType = '{}'
                  AND 
-                 Number = '{Email}' // TODO
+                 Number = '{email}' 
                 )
             ";
 
@@ -1016,7 +1022,7 @@ namespace AnseremPackage
                 UPDATE
                     Contact
                 SET
-                    Email = '{Email}', // TODO
+                    Email = '{email}', 
                     Account = '{accountId}',
                     OlpBooleanAeroclubCheck = 1,
                     OlpSignVip = '{eis.isVip}',
@@ -1045,7 +1051,7 @@ namespace AnseremPackage
                 UPDATE 
                     Contact
                 SET
-                    Email = '{Email}', // TODO
+                    Email = '{email}',
                     Account = '{accountId}',
                     Type = '{CONTACT_TYPE_CLIENT}',
                 WHERE 
@@ -1062,7 +1068,7 @@ namespace AnseremPackage
                 UPDATE 
                     Contact
                 SET
-                    Email = '{Email}', // TODO
+                    Email = '{email}', 
                     Type = '{CONTACT_TYPE_CLIENT}',
                 WHERE 
                     Id = '{contactId}'
