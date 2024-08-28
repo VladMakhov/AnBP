@@ -74,6 +74,7 @@ namespace AnseremPackage
         private const Guid ACTIVITY_TYPE_EMAIL = new Guid("E2831DEC-CFC0-DF11-B00F-001D60E938C6");
         // CONSTS
 
+        // PARAMS 
         private Entity Entity { get; set; }
 
         private UserConnection UserConnection { get; set; }
@@ -113,10 +114,39 @@ namespace AnseremPackage
         private Guid importancy { get; set; }
 
         private Guid urgency { get; set; }
-
-        private string domain { get; set; }
         
-        private string email { get; set; }
+        private Guid email { get; set; }
+        
+        private Guid copies { get; set; }
+        // PARAMS 
+
+        // LEGACY
+        private Guid MainGroupIdByEmail { get; set; }
+        
+        private string MainGroupEmailBox { get; set; }
+        
+        private Guid MainGroupEmailBoxId { get; set; }
+        
+        private Guid MainEmailBoxIdForReg { get; set; }
+        
+        private string MainSheduleTypeByMail { get; set; }
+        
+        private string ExtraGroupEmailBox { get; set; }
+        
+        private Guid ExtraGroupIdByEmail { get; set; }
+        
+        private Guid ExtraGroupEmailBoxId { get; set; }
+        
+        private string ExtraSheduleTypeByMail { get; set; }
+        
+        private Guid { get; set; }
+        
+        private Guid { get; set; }
+        
+        private Guid { get; set; }
+        
+        private Guid { get; set; }
+        // LEGACY
 
         public override void OnInserting(object sender, EntityAfterEventArgs e)
         {
@@ -136,25 +166,24 @@ namespace AnseremPackage
             }
 
             parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId");
-
             // email родительской активности
             activity = GetParentActivityFromCase();
 
-            domain = GetDomainFromActivity();
-           
-            email = GetEmailFromActivity();
+            email = activity.GetTypedColumnValue<string>("Recepient"); // TODO Check for correct grammar
+
+            copies = activity.GetTypedColumnValue<string>("CopyRecepient"); // TODO Check for correct grammar
             
             /**
              * Чтение всех основных групп для выделения подходящей основной группы
              * Найти основную группу по email в кому/копия
              */
-            mainServiceGroup = GetServiceGroup(SERVICE_GROUP_TYPE_MAIN);
+            mainServiceGroup = GetServiceGroupMain();
 
             /**
              * Чтение дежурной группы
              * Найти дежурную группу по email в кому/копия
              */
-            extraServiceGroup = GetServiceGroup(SERVICE_GROUP_TYPE_EXTRA);
+            extraServiceGroup = GetServiceGroupExtra();
 
             /**
              * Добавить TRAVEL
@@ -538,7 +567,7 @@ namespace AnseremPackage
 
             using (var db = UserConnection.EnsureDBConnection())
             {
-                using (var reader = query.ExecuteReader(db))
+                using (var reader = sql.ExecureReader(db))
                 {
                     if (reader.Read())
                     {
@@ -593,27 +622,204 @@ namespace AnseremPackage
             }
         }
 
-        private Guid GetServiceGroup(Guid type)
+        private Guid GetServiceGroupExtra()
         {
             string sql = @$"
                 SELECT * FROM OlpServiceGroup
                 WHERE Id IS NOT NULL AND
                 OlpSgEmail IS NOT NULL AND
-                OlpTypeGroupService = '{type}' 
-               ";
+                OlpTypeGroupService = '{SERVICE_GROUP_TYPE_EXTRA}' 
+                ";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
             using (var db = UserConnection.EnsureDBConnection())
             {
-                using (var reader = query.ExecuteReader(db))
+                using (var reader = sql.ExecureReader(db))
                 {
+
+                    Guid ExtraGroupIdTemp = System.Guid.Empty;
+
                     while (reader.Read())
                     {
-                        // TODO Тут должна быть ебанная хуйня из "Найти основную группу по email в кому/копия"
+
+                        string EmailBoxName = "";
+                        string EmailBoxALias = "";
+                        
+                        ExtraGroupId = reader.GetColumnValue<string>("ExtraGroupId");
+
+                        ExtraEmailBox = reader.GetColumnValue<string>("ExtraGroupEmailBoxId");
+
+                        //ищем текстовое значение ящика по ГО
+                        EntitySchemaQuery ExtraEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
+                        ExtraEmailBoxString.PrimaryQueryColumn.IsAlwaysSelect = true;
+                        ExtraEmailBoxString.ChunkSize = 1;
+                        ExtraEmailBoxString.Filters.Add(ExtraEmailBoxString.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ExtraGroupEmailBoxId));
+                        ExtraEmailBoxString.AddColumn("Name");
+                        ExtraEmailBoxString.AddColumn("AliasAddress");
+
+                        var MailboxSyncSettings = ExtraEmailBoxString.AddColumn("MailboxSyncSettings.Id"); //Ид. ящика из настройки почтовых ящиков
+                        EntityCollection CollectionEmailText = ExtraEmailBoxString.GetEntityCollection(UserConnection);
+                        //Найден ящик для регистрации обращений
+                        if (CollectionEmailText.IsNotEmpty())
+                        {
+                            foreach (var itemsemail in CollectionEmailText)
+                            {
+                                EmailBoxName = itemsemail.GetTypedColumnValue<string>("Name"); //название в справочнике ящиков для рег. обращений
+                                EmailBoxALias = itemsemail.GetTypedColumnValue<string>("AliasAddress");
+                                if( !string.IsNullOrEmpty(EmailBoxALias)){    
+                                    string[] words = EmailBoxName.Split('(');
+                                    EmailBoxName = words[0];}
+
+                                if (!string.IsNullOrEmpty(EmailBoxALias) && (email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
+                                            || email.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
+                                            || copies.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
+                                            || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim())))
+                                {
+                                    ExtraGroupIdByEmail = ExtraGroupId;
+                                    ExtraGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
+                                    ExtraGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
+                                    ExtraGroupIdTemp = ExtraGroupId;
+                                }
+                                else if(email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
+                                        || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim()))
+                                {
+                                    ExtraGroupIdByEmail = ExtraGroupId;
+                                    ExtraGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
+                                    ExtraGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
+                                    ExtraGroupIdTemp = ExtraGroupId;
+                                }
+                            }
+                        }
+
+                        if (ExtraGroupIdTemp != Guid.Empty)
+                        {
+
+                            EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                            esq.PrimaryQueryColumn.IsAlwaysSelect = true;
+                            esq.ChunkSize = 1;
+                            var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
+                            esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ExtraGroupIdTemp));
+                            EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+                            //Идем в цикл если коллекция не пустая
+                            if (entityCollection.IsNotEmpty()) 
+                            {
+                                foreach (var groupsshedule in entityCollection) 
+                                {
+                                    ExtraSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
+                                    return;
+                                }
+                            }
+                        }
                     }
                 }
             }
+            return;
+        }
+
+        private Guid GetServiceGroupMain()
+        {
+            string sql = @$"
+                SELECT * FROM OlpServiceGroup
+                WHERE Id IS NOT NULL AND
+                OlpSgEmail IS NOT NULL AND
+                OlpTypeGroupService = '{SERVICE_GROUP_TYPE_MAIN}' 
+                "; 
+
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+
+            using (var db = UserConnection.EnsureDBConnection())
+            {
+                using (var reader = sql.ExecureReader(db))
+                {
+                    Guid MainGroupIdTemp = Guid.Empty;
+
+                    while (reader.Read())
+                    {
+
+                        string EmailBoxName = "";
+                        string EmailBoxALias = "";
+
+                        // Ид.ГО
+                        Guid MainGroupId = reader.GetColumnValue<Guid>("MainGroupId");
+
+                        // Ид.почтового ящика основной группы
+                        Guid MainGroupEmailBoxId = reader.GetColumnValue<Guid>("MainGroupEmailBoxId");
+
+                        //ищем текстовое значение ящика по ГО
+                        EntitySchemaQuery EsqEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
+                        EsqEmailBoxString.PrimaryQueryColumn.IsAlwaysSelect = true;
+                        EsqEmailBoxString.ChunkSize = 1;
+                        EsqEmailBoxString.Filters.Add(EsqEmailBoxString.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", MainGroupEmailBoxId));
+                        EsqEmailBoxString.AddColumn("Name");
+                        EsqEmailBoxString.AddColumn("AliasAddress");
+
+                        var MailboxSyncSettings= EsqEmailBoxString.AddColumn("MailboxSyncSettings.Id"); //Ид. ящика из настройки почтовых ящиков
+
+                        EntityCollection CollectionEmailText = EsqEmailBoxString.GetEntityCollection(UserConnection);
+
+                        //Найден ящик для регистрации обращений
+                        if (CollectionEmailText.IsNotEmpty()){
+                            foreach (var itemsemail in CollectionEmailText){
+                                EmailBoxName = itemsemail.GetTypedColumnValue<string>("Name"); //название в справочнике ящиков для рег. обращений
+                                EmailBoxALias = itemsemail.GetTypedColumnValue<string>("AliasAddress");
+                                //	var servicegroupid = itemsemail.GetTypedColumnValue<Guid>("Id");
+
+                                if( !string.IsNullOrEmpty(EmailBoxALias))
+                                {
+                                    string[] words = EmailBoxName.Split('(');
+                                    EmailBoxName = words[0];
+                                }
+
+                                if (!string.IsNullOrEmpty(EmailBoxALias) && (email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
+                                            || email.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
+                                            || copies.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
+                                            || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim())))
+                                {
+                                    MainGroupIdByEmail = MainGroupId;
+                                    MainGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
+                                    MainGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
+                                    MainEmailBoxIdForReg = itemsemail.GetTypedColumnValue<Guid>("Id");
+                                    MainGroupIdTemp = MainGroupId;
+                                }
+                                else if(email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
+                                        || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim()))
+                                {
+                                    MainGroupIdByEmail = MainGroupId;
+                                    MainGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
+                                    MainGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
+                                    MainEmailBoxIdForReg = itemsemail.GetTypedColumnValue<Guid>("Id");
+                                    MainGroupIdTemp = MainGroupId;
+                                }
+                            }
+                        }
+
+                        if (MainGroupIdTemp != Guid.Empty)
+                        {
+                            EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                            esq.PrimaryQueryColumn.IsAlwaysSelect = true;
+                            esq.ChunkSize = 1;
+                            var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
+
+                            esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", MainGroupIdTemp));
+
+                            EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+
+                            //Идем в цикл если коллекция не пустая
+                            if (entityCollection.IsNotEmpty()) 
+                            {
+                                foreach (var groupsshedule in entityCollection) 
+                                {
+                                    MainSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name));
+                                    return;
+                                }
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            return;
         }
 
         private void SetTravelParameter()
@@ -741,7 +947,7 @@ namespace AnseremPackage
 
             using (var db = UserConnection.EnsureDBConnection())
             {
-                using (var reader = query.ExecuteReader(db))
+                using (var reader = sql.ExecureReader(db))
                 {
                     if (reader.Read())
                     {
@@ -883,7 +1089,7 @@ namespace AnseremPackage
 
             using (var db = UserConnection.EnsureDBConnection())
             {
-                using (var reader = query.ExecuteReader(db))
+                using (var reader = sql.ExecureReader(db))
                 {
                     if (reader.Read())
                     {
