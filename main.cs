@@ -81,8 +81,6 @@ namespace AnseremPackage
         /**SETTINGS**/
         
         /**PARAMS**/
-        private UserConnection UserConnection { get; set; }
-
         private string caseCategory { get; set; }
 
         private object contact { get; set; }
@@ -548,7 +546,7 @@ namespace AnseremPackage
 
             if (EIS.orderNumbCheck != Guid.Empty)
             {
-                // TODO Собрать услуги для добавления
+                // Собрать услуги для добавления
                 CollectServicesForInsertion();
 
                 // TODO Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
@@ -2263,6 +2261,33 @@ namespace AnseremPackage
             /**LEGACY**/
         }
 
+        private void GetLoadingCheck()
+        {
+            sql = @$"
+                SELECT 
+                    BooleanValue 
+                FROM 
+                    SysSettingsValue 
+                WHERE 
+                    SysSettingsId = (
+                        SELECT id FROM SysSettings WHERE Code LIKE 'OLPLoadingCheck'
+                        )
+                ";
+
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+
+            using (var db = UserConnection.EnsureDBConnection())
+            {
+                using (var reader = sql.ExecureReader(db))
+                {
+                    if (reader.Read())
+                    {
+                        return reader.GetColumnValue<bool>("BooleanValue");
+                    }
+                }
+            }
+        }
+
         private void CollectServicesForInsertion()
         {
             var servicesList = eis.OlpServices_Out; // TODO
@@ -2313,7 +2338,7 @@ namespace AnseremPackage
                 }
 
 
-                else if (CollectionEsqServise.IsNotEmpty() && (nagruzka == false || nagruzkacount > 5) )
+                else if (CollectionEsqServise.IsNotEmpty() && (nagruzka == false || nagruzkacount > 5))
                 {
                     continue;
                 }
