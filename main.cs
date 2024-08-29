@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using Common.Logging;
-using BPMSoft.Configuration;
-using BPMSoft.Core;
-using BPMSoft.Core.DB;
-using BPMSoft.Core.Entities;
-using BPMSoft.Core.Entities.Events;
+using Terrasoft.Configuration;
+using Terrasoft.Core;
+using Terrasoft.Core.DB;
+using Terrasoft.Core.Entities;
+using Terrasoft.Core.Entities.Events;
 
 
 namespace AnseremPackage
@@ -73,13 +73,15 @@ namespace AnseremPackage
         
         private const Guid ACTIVITY_TYPE_EMAIL = new Guid("E2831DEC-CFC0-DF11-B00F-001D60E938C6");
         /**CONSTS**/
-
-        /**PARAMS**/
-        private Entity Entity { get; set; }
-
-        private UserConnection UserConnection { get; set; }
-
+ 
+        /**SYS_SETTINGS**/
         private bool isOlpFirstStage = GetOlpFirstStage();
+
+        private bool LoadingCheck = GetLoadingCheck(); // TODO
+        /**SETTINGS**/
+        
+        /**PARAMS**/
+        private UserConnection UserConnection { get; set; }
 
         private string caseCategory { get; set; }
 
@@ -160,6 +162,10 @@ namespace AnseremPackage
         private bool ProcessSchemaParamCompanyFoundId { get; set; }
 
         private bool ProcessSchemaParamHoldingFoundId { get; set; }
+
+        private CompositeObjectList<CompositeObject> ServicesToAdd { get; set;}
+        
+        private string ProcessSchemaParamTime { get; set;}
 
         /**LEGACY**/
         
@@ -1026,7 +1032,7 @@ namespace AnseremPackage
                 UPDATE 
                     Contact
                 SET 
-                    Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', // TODO
+                    Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', 
                     Account = '{companyId}' // TODO
                 WHERE
                     Id = '{contactId}'
@@ -2022,16 +2028,6 @@ namespace AnseremPackage
             return true;
         }
 
-        private void ReadAccount()
-        {
-            // TODO
-        }
-
-        private void SetupHolding()
-        {
-            // TODO
-        }
-
         private void SetFirstLineSupport()
         {
             string sql = @$"
@@ -2045,7 +2041,7 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{}', // TODO
+                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', // TODO
                 WHERE 
                     Id = '{caseId}'
             ";
@@ -2067,7 +2063,7 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{}', // TODO
+                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', // TODO
                 WHERE 
                     Id = '{caseId}'
             ";
@@ -2088,7 +2084,7 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{}', // TODO
+                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', // TODO
                 WHERE 
                     Id = '{caseId}'
             ";
@@ -2149,7 +2145,7 @@ namespace AnseremPackage
                     var entityemailContact = emailContact.CreateEntity(UserConnection);
 
                     entityemailContact.UseAdminRights = false;
-                    entityemailContact.SetDefColumnValues();
+                    entityemailContact.SetDefColumnValues()
                     entityemailContact.SetColumnValue("ContactId", IdContact );
                     entityemailContact.SetColumnValue("Number", NameEmail);
                     entityemailContact.SetColumnValue("CommunicationTypeId", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6"));
@@ -2212,9 +2208,9 @@ namespace AnseremPackage
             
             //Считать признак поиска в ЕИС
             //Считать Ид. компании 
-            Guid companyid = ProcessSchemaParamCompanyFoundId;
+            Guid companyid = ProcessSchemaParamCompanyFoundId; // TODO
             //Считать Ид. холдинга
-            Guid holdingid = ProcessSchemaParamHoldingFoundId;
+            Guid holdingid = ProcessSchemaParamHoldingFoundId; // TODO
 
             //Считать ВИП Платформа
             // Get<bool>("ProcessSchemaParamClientFoundIsVIPPl"); TODO
@@ -2254,7 +2250,7 @@ namespace AnseremPackage
                     ProcessSchemaParamServiceGroupId = servicegroupid;
                     ProcessSchemaParameterIsDutyGroup = false;
                 }
-            }        
+            }       
             else
             { 
                 //Дежурная группа
@@ -2269,7 +2265,77 @@ namespace AnseremPackage
 
         private void CollectServicesForInsertion()
         {
-            // TODO Элемент старого кода   
+            var servicesList = eis.OlpServices_Out; // TODO
+
+            bool nagruzka = LoadingCheck;
+            int  nagruzkacount = 0;
+
+            var list = new CompositeObjectList<CompositeObject>();
+
+            foreach (var item in servicesList) {
+                //Если 
+                if (item.TryGetValue<string>("OlpSONumber_Out", out string OrderNumber)){}
+                if (item.TryGetValue<string>("OlpSSNumber1_Out", out string ServiceNumber)){}
+                if (item.TryGetValue<string>("OlpSTNumber_Out", out string TripNumber)){}
+
+                string OrderNumber = item.TryGetValue<string>("OlpSONumber_Out");
+                string ServiceNumber = item.TryGetValue<string>("OlpSSNumber1_Out");
+                string TripNumber = item.TryGetValue<string>("OlpSTNumber_Out");
+
+                //Если передается пустота - выходим
+                if (ServiceNumber == "0") 
+                {
+                    continue;
+                }
+
+                //Проверка существует ли услуга в системе
+                EntitySchemaQuery EsqServise = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServices");
+                EsqServise.PrimaryQueryColumn.IsAlwaysSelect = true;
+                EsqServise.ChunkSize = 1;
+                EsqServise.Filters.Add(EsqServise.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpExternalOrderNumber", OrderNumber));
+                EsqServise.Filters.Add(EsqServise.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpExternalServiceId", ServiceNumber));
+                EsqServise.Filters.Add(EsqServise.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpExternalTripId", TripNumber));
+
+                EntityCollection CollectionEsqServise = EsqServise.GetEntityCollection(UserConnection);
+
+                if (CollectionEsqServise.IsNotEmpty() && nagruzka == true && nagruzkacount <= 5)
+                {
+                    var itemo = new CompositeObject();
+                    itemo["ServOrderNumber"] = OrderNumber;
+                    itemo["ServiceNumb"] = ServiceNumber;
+                    itemo["ProcessSchemaParamExtTripId"] = TripNumber;
+                    list.Add(itemo);
+                    OrderNumber = "";
+                    TripNumber = "";
+                    ServiceNumber = "";
+
+                    nagruzkacount = nagruzkacount + 1;
+                }
+
+
+                else if (CollectionEsqServise.IsNotEmpty() && (nagruzka == false || nagruzkacount > 5) )
+                {
+                    continue;
+                }
+
+                else
+                {
+                    var itemo = new CompositeObject();
+                    itemo["ServOrderNumber"] = OrderNumber;
+                    itemo["ServiceNumb"] = ServiceNumber;
+                    itemo["ProcessSchemaParamExtTripId"] = TripNumber;
+                    list.Add(itemo);
+                    OrderNumber = "";
+                    TripNumber = "";
+                    ServiceNumber = "";
+                }
+            }
+
+            ServicesToAdd = list;
+
+            ProcessSchemaParamTime = DateTime.Now.ToString("yyyyMMddHHmmssfffffff");
+
+            return true;
         }
     }
 }
