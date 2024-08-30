@@ -6,7 +6,10 @@ using Terrasoft.Core;
 using Terrasoft.Core.DB;
 using Terrasoft.Core.Entities;
 using Terrasoft.Core.Entities.Events;
-
+using System.Net.Http;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace AnseremPackage
 {
@@ -77,7 +80,7 @@ namespace AnseremPackage
         /**SYS_SETTINGS**/
         private bool isOlpFirstStage = GetOlpFirstStage();
 
-        private bool LoadingCheck = GetLoadingCheck(); // TODO
+        private bool LoadingCheck = GetLoadingCheck(); 
         /**SETTINGS**/
         
         /**PARAMS**/
@@ -87,7 +90,7 @@ namespace AnseremPackage
 
         private object activity { get; set; }
 
-        private object eis { get; set; }
+        private Profile eis { get; set; }
 
         private object account { get; set; }
 
@@ -118,6 +121,8 @@ namespace AnseremPackage
         private Guid email { get; set; }
         
         private Guid copies { get; set; }
+        
+        private Guid mailto { get; set; }
         /**PARAMS**/
 
         /**LEGACY**/
@@ -185,12 +190,15 @@ namespace AnseremPackage
             }
 
             parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId");
+            
             // email родительской активности
             activity = GetParentActivityFromCase();
 
-            email = activity.GetTypedColumnValue<string>("Recepient"); // TODO Check for correct parameter
+            email = activity.GetTypedColumnValue<string>("Sender");
 
-            copies = activity.GetTypedColumnValue<string>("CopyRecepient"); // TODO Check for correct parameter
+            mailto = activity.GetTypedColumnValue<string>("Recepient"); 
+
+            copies = activity.GetTypedColumnValue<string>("CopyRecepient"); 
             
             /**
              * Чтение всех основных групп для выделения подходящей основной группы
@@ -285,11 +293,12 @@ namespace AnseremPackage
 
         private void EisPath()
         {
-            eis = SendEisRequest(); // TODO интеграция + объект ЕИС
+            isResponseSuccessful = SendEisRequest();
+
             // Да
-            if (eis.code == 200 || (eis.code == 200 && contact.aeroclubCheck))
+            if (isResponseSuccessful || (isResponseSuccessful && contact.aeroclubCheck))
             {
-                account = FetchAccountByEis(eis.account);
+                account = FetchAccountByEis(eis.Company);
 
                 RefreshEmailsAndPhones();
 
@@ -302,7 +311,7 @@ namespace AnseremPackage
             }
 
             // Нет по домену и нет по ЕИС и (пустой тип или СПАМ)
-            if (eis.code == 200 && contact.account == Guid.Empty && (contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
+            if (isResponseSuccessful && contact.account == Guid.Empty && (contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
                 // категория СПАМ
                 caseCategory = CONTACT_TYPE_UNDEFINED_CLIENT_SPAM;
@@ -539,13 +548,14 @@ namespace AnseremPackage
 
         private void goto7()
         {
-            if (EIS.code == 200)
+            if (isResponseSuccessful)
             {
                 return;
             }
-
-            if (EIS.orderNumbCheck != Guid.Empty)
-            {
+       
+            // TODO
+            // if (eis.orderNumbCheck != Guid.Empty) 
+            // {
                 // Собрать услуги для добавления
                 CollectServicesForInsertion();
 
@@ -564,7 +574,7 @@ namespace AnseremPackage
                 {
 
                 }
-            }
+            //}
 
             return;
         }
@@ -1039,7 +1049,7 @@ namespace AnseremPackage
             query.Execute();
         }
 
-        private void RefreshContact(Eis eis, Guid accountId, Guid contactId)
+        private void RefreshContact()
         {
             string sql = @$"
                 UPDATE
@@ -1049,16 +1059,16 @@ namespace AnseremPackage
                     Account = '{accountId}',
                     OlpBooleanAeroclubCheck = 1,
                     OlpSignVip = '{eis.isVip}',
-                    OlpContactProfileConsLink = '{eis.profileLink}',
+                    OlpContactProfileConsLink = '{eis.ProfileLink}',
                     OlpLnFnPat = '{}', // TODO
-                    GivenName = '{eis.rusFirstName}',
-                    MiddleName = '{eis.rusMiddleName}',
-                    Surname = '{eis.rusSurname}',
-                    OlpSignVipPlatf = '{eis.isVipPlatform}',
-                    OlpIsAuthorizedPerson = '{eis.isAuthorizedPerson}',
-                    OlpIsContactPerson = '{eis.isContactPerson}',
+                    GivenName = '{eis.FirstName.Russian}',
+                    MiddleName = '{eis.MiddleName.Russian}',
+                    Surname = '{eis.Surname.Russian}',
+                    OlpSignVipPlatf = '{eis.IsVipOnPlatform}',
+                    OlpIsAuthorizedPerson = '{eis.IsAuthorized}',
+                    OlpIsContactPerson = '{eis.IsContactPerson}',
                     Type = '{CONTACT_TYPE_CLIENT}',
-                    OlpExternalContId = '{eis.idOut}'
+                    OlpExternalContId = '{eis.idOut}' // TODO
                 WHERE 
                     Id = '{contactId}'
             ";
@@ -2115,13 +2125,13 @@ namespace AnseremPackage
             /**LEGACY**/
 
             // обновление/добавление почты
-            var emailList = eis.OlpEmails_Out; 
-            var IdContact = ContactIdForEmailAndPhone; 
+            var emailList = eis.Emails; 
+            var IdContact = ContactIdForEmailAndPhone; // TODO 
 
             foreach (var item in emailList) 
             {
 
-                NameEmail = item.OlpEAddress_Out;
+                NameEmail = item.Address;
 
                 if (string.IsNullOrEmpty(NameEmail)) { continue; }	// если нет почты то идти на следующий
 
@@ -2362,5 +2372,116 @@ namespace AnseremPackage
 
             return true;
         }
+        
+        private bool SendEisRequest()
+        {
+            string id = "";
+            string phone = "";
+    
+            // Email here is 'private string email { get; set; }' from activity 
+            string url = $"http://services.aeroclub.int/bpmintegration/profiles/get-info?Id={id}&Email={email}&Phone={phone}"; 
+            
+            try
+            {
+                using (WebClient client = new WebClient())
+                {
+                    client.Encoding = Encoding.UTF8;
+
+                    string responseBody = client.DownloadString(url);
+
+                    using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(responseBody)))
+                    {
+                        var serializer = new DataContractJsonSerializer(typeof(Profile));
+                        eis = (Profile)serializer.ReadObject(ms);
+                        return true;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                return false;
+            }
+        }
     }
+
+    public class Profile
+    {
+        public int Id { get; set; }
+        
+        public Name FirstName { get; set; }
+        
+        public Name LastName { get; set; }
+        
+        public Name MiddleName { get; set; }
+        
+        public Company Company { get; set; }
+        
+        public DateTime DateOfBirth { get; set; }
+        
+        public string Gender { get; set; }
+        
+        public bool IsAuthorized { get; set; }
+        
+        public bool IsVip { get; set; }
+        
+        public bool IsContactPerson { get; set; }
+        
+        public bool IsVipOnPlatform { get; set; }
+        
+        public string EmployeeNumber { get; set; }
+        
+        public string EmployeeLevel { get; set; }
+        
+        public string ProfileLink { get; set; }
+        
+        public List<CustomProperty> CustomProperties { get; set; }
+        
+        public List<Email> Emails { get; set; }
+        
+        public List<Phone> Phones { get; set; }
+    }
+
+    public class Name
+    {
+        public string English { get; set; }
+        public string Russian { get; set; }
+    }
+
+    public class Company
+    {
+        public int Id { get; set; }
+        public Name Name { get; set; }
+    }
+
+    public class CustomProperty
+    {
+        public Property Property { get; set; }
+        public Value Value { get; set; }
+    }
+
+    public class Property
+    {
+        public string English { get; set; }
+        public string Russian { get; set; }
+    }
+
+    public class Value
+    {
+        public string English { get; set; }
+        public string Russian { get; set; }
+    }
+
+    public class Email
+    {
+        public string Kind { get; set; }
+        public string Address { get; set; }
+    }
+
+    public class Phone
+    {
+        public string Kind { get; set; }
+        public string Number { get; set; }
+    }
+    
 }
+
