@@ -75,6 +75,8 @@ namespace AnseremPackage
         private const Guid COMMUNICATION_TYPE_EMAIL = new Guid("EE1C85C3-CFCB-DF11-9B2A-001D60E938C6");
         
         private const Guid ACTIVITY_TYPE_EMAIL = new Guid("E2831DEC-CFC0-DF11-B00F-001D60E938C6");
+        
+        private const Guid OLP_AC_COMPANY_IS_NOT_DEFINED = new Guid("A1998F90-2EEC-48A4-94E8-A3CF48134FFB");
         /**CONSTS**/
  
         /**SYS_SETTINGS**/
@@ -86,7 +88,9 @@ namespace AnseremPackage
         /**PARAMS**/
         private string caseCategory { get; set; }
 
-        private object contact { get; set; }
+        private Contact contact { get; set; }
+        
+        private Guid contactId { get; set; }
 
         private object activity { get; set; }
 
@@ -180,6 +184,8 @@ namespace AnseremPackage
 
             // Чтение карточки контакта из обращения
             contact = ReadContactFromCase(_case.GetTypedColumnValue<Guid>("ContactId"));
+            
+            contactId = contact.GetTypedColumnValue<Guid>("contactId");
 
             // Нет (СПАМ) - 2 ЭТАП
             if (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM) 
@@ -526,7 +532,7 @@ namespace AnseremPackage
                 goto7();
             }
 
-            var firstLineSupport = GetFirstLineSupport();
+            var firstLineSupport = GetFirstLineSupport(); // TODO
 
             if (activity.GetTypedColumnValue<Guid>("Priority") == ACTIVITY_PRIORITY_HIGH)
             {
@@ -1041,7 +1047,7 @@ namespace AnseremPackage
                     Contact
                 SET 
                     Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', 
-                    Account = '{companyId}' // TODO
+                    Account = '{OLP_AC_COMPANY_IS_NOT_DEFINED}' 
                 WHERE
                     Id = '{contactId}'
             ";
@@ -1051,6 +1057,7 @@ namespace AnseremPackage
 
         private void RefreshContact()
         {
+            string OlpLnFnPat = eis.FirstName.English + " " + eis.MiddleName.English + " " + eis.LastName.English
             string sql = @$"
                 UPDATE
                     Contact
@@ -1060,7 +1067,7 @@ namespace AnseremPackage
                     OlpBooleanAeroclubCheck = 1,
                     OlpSignVip = '{eis.isVip}',
                     OlpContactProfileConsLink = '{eis.ProfileLink}',
-                    OlpLnFnPat = '{}', // TODO
+                    OlpLnFnPat = '{OlpLnFnPat}',
                     GivenName = '{eis.FirstName.Russian}',
                     MiddleName = '{eis.MiddleName.Russian}',
                     Surname = '{eis.Surname.Russian}',
@@ -1068,7 +1075,7 @@ namespace AnseremPackage
                     OlpIsAuthorizedPerson = '{eis.IsAuthorized}',
                     OlpIsContactPerson = '{eis.IsContactPerson}',
                     Type = '{CONTACT_TYPE_CLIENT}',
-                    OlpExternalContId = '{eis.idOut}' // TODO
+                    OlpExternalContId = '{eis.Id}' 
                 WHERE 
                     Id = '{contactId}'
             ";
@@ -1083,7 +1090,7 @@ namespace AnseremPackage
             string sql = @$"
                 UPDATE 
                     Contact
-                SET
+                SET,
                     Email = '{email}',
                     Account = '{accountId}',
                     Type = '{CONTACT_TYPE_CLIENT}',
@@ -1259,8 +1266,8 @@ namespace AnseremPackage
 
             foreach (var item in servicegrouplist)
             {
-                Guid ServiceGroupId = item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId"); // TODO
-                string ServiceTimeTableId = item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId"); // TODO
+                Guid ServiceGroupId = item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId"); 
+                string ServiceTimeTableId = item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId"); 
                 
                 if (ServiceTimeTableId == "Круглосуточно")
                 {
@@ -1880,11 +1887,11 @@ namespace AnseremPackage
         {
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
 
-            Guid ServiceGroupId = DutyGroupId; // TODO 
+            Guid ServiceGroupId = OLP_DUTY_SERVICE_GROUP; // TODO Вроде это
             string sheduletype = "";
 
-            if (ServiceGroupId != Guid.Empty){
-
+            if (ServiceGroupId != Guid.Empty)
+            {
                 EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
                 esq.PrimaryQueryColumn.IsAlwaysSelect = true;
                 esq.ChunkSize = 1;
@@ -2049,7 +2056,7 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', // TODO
+                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', 
                 WHERE 
                     Id = '{caseId}'
             ";
@@ -2071,8 +2078,8 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', // TODO
-                WHERE 
+                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', 
+                WHERE
                     Id = '{caseId}'
             ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
@@ -2092,7 +2099,7 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', // TODO
+                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', 
                 WHERE 
                     Id = '{caseId}'
             ";
@@ -2126,7 +2133,7 @@ namespace AnseremPackage
 
             // обновление/добавление почты
             var emailList = eis.Emails; 
-            var IdContact = ContactIdForEmailAndPhone; // TODO 
+            var IdContact = contactId;
 
             foreach (var item in emailList) 
             {
@@ -2378,7 +2385,7 @@ namespace AnseremPackage
             string id = "";
             string phone = "";
     
-            // Email here is 'private string email { get; set; }' from activity 
+            // Email here is 'private string email' from activity 
             string url = $"http://services.aeroclub.int/bpmintegration/profiles/get-info?Id={id}&Email={email}&Phone={phone}"; 
             
             try
