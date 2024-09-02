@@ -1,16 +1,3 @@
-using System;
-using System.Collections.Generic;
-using Common.Logging;
-using Terrasoft.Configuration;
-using Terrasoft.Core;
-using Terrasoft.Core.DB;
-using Terrasoft.Core.Entities;
-using Terrasoft.Core.Entities.Events;
-using System.Net.Http;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-
 /**
  *                  | Документация бизнес-логики |
  *
@@ -282,6 +269,18 @@ using Newtonsoft.Json.Linq;
  * */
 namespace AnseremPackage
 {
+    using System;
+    using System.Collections.Generic;
+    using Common.Logging;
+    using Terrasoft.Configuration;
+    using Terrasoft.Core;
+    using Terrasoft.Core.DB;
+    using Terrasoft.Core.Entities;
+    using Terrasoft.Core.Entities.Events;
+    using System.Net.Http;
+    using System.Threading.Tasks;
+    using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
 
     [EntityEventListener(SchemaName = nameof(Case))]
     private class AnEmailCaseProcessor: BaseEntityEventListener
@@ -396,6 +395,10 @@ namespace AnseremPackage
         private Guid copies { get; set; }
         
         private Guid mailto { get; set; }
+
+        private bool isResponseSuccessful { get; set; }
+        
+        private Guid firstLineSupport { get; set; }
         /**PARAMS**/
 
         /**LEGACY**/
@@ -623,6 +626,8 @@ namespace AnseremPackage
             // Найти данные компании привязанной к контакту ненайденного в ЕИС
             // Выставить холдинг компании контакта
             holding = GetHoldingFromAccountBindedToEis();            
+            
+            ProcessSchemaParamHoldingFoundId = holding;
 
             // Чтение карточки контакта после обновления
             ReadContactAfterRefreshing();
@@ -640,7 +645,8 @@ namespace AnseremPackage
             clientVipPlatform = contact.GetTypedColumnValue<bool>("OlpSignVipPlatf");
 
             clientCompanyId = contact.GetTypedColumnValue<bool>("Account");
-
+            ProcessSchemaParamCompanyFoundId = clientCompanyId;
+            
             AddAccountToEmail();
 
             // Найти основную ГО для контакта по компаниям и ВИП Платформа
@@ -783,6 +789,8 @@ namespace AnseremPackage
                 goto7();
             }
 
+            // Клиент явдяется ВИП
+            // Да 
             if (clientVip)
             {
                 importancy = CASE_IMPORTANCY_IMPOTANT;
@@ -800,7 +808,8 @@ namespace AnseremPackage
                 goto7();
             }
 
-            var firstLineSupport = GetFirstLineSupport(); // TODO
+            // Найти 1 линию поддержки для обращения
+            var firstLineSupport = GetFirstLineSupport(serviceGroup.GetTypedColumnValue<Guid>("OlpOrgRole"));
 
             if (activity.GetTypedColumnValue<Guid>("Priority") == ACTIVITY_PRIORITY_HIGH)
             {
@@ -820,6 +829,9 @@ namespace AnseremPackage
             }
         }
 
+        /**
+         * TODO
+         * */
         private void goto7()
         {
             if (isResponseSuccessful)
@@ -827,13 +839,12 @@ namespace AnseremPackage
                 return;
             }
        
-            // TODO
-            // if (eis.orderNumbCheck != Guid.Empty) 
-            // {
+            if (eis.orderNumbCheck != Guid.Empty) 
+            {
                 // Собрать услуги для добавления
                 CollectServicesForInsertion();
 
-                // TODO Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
+                // Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
                 IProcessEngine processEngine = userConnection.ProcessEngine;
                 IProcessExecutor processExecutor = processEngine.ProcessExecutor;
 
@@ -848,7 +859,7 @@ namespace AnseremPackage
                 {
 
                 }
-            //}
+            }
 
             return;
         }
@@ -2155,7 +2166,7 @@ namespace AnseremPackage
         {
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
 
-            Guid ServiceGroupId = OLP_DUTY_SERVICE_GROUP; // TODO Вроде это
+            Guid ServiceGroupId = OLP_DUTY_SERVICE_GROUP; 
             string sheduletype = "";
 
             if (ServiceGroupId != Guid.Empty)
@@ -2376,11 +2387,17 @@ namespace AnseremPackage
  
         }
 
+        /**
+         * TODO
+         * */
         private void SendBookAutoreply()
         {
-            // TODO
+            return;
         }
 
+        /**
+         * TODO
+         * */
         private void SetAutonotification()
         {
             string sql = @$"
@@ -2389,7 +2406,7 @@ namespace AnseremPackage
                 SET 
                     IsAutoSubmitted = '{true}',
                 WHERE 
-                    id = '{parentActivityId}' // TODO Is Parent activity Id needed?
+                    id = '{parentActivityId}' 
             ";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
@@ -2491,12 +2508,11 @@ namespace AnseremPackage
             
             //Считать признак поиска в ЕИС
             //Считать Ид. компании 
-            Guid companyid = ProcessSchemaParamCompanyFoundId; // TODO
+            Guid companyid = ProcessSchemaParamCompanyFoundId; 
             //Считать Ид. холдинга
-            Guid holdingid = ProcessSchemaParamHoldingFoundId; // TODO
+            Guid holdingid = ProcessSchemaParamHoldingFoundId;
 
             //Считать ВИП Платформа
-            // Get<bool>("ProcessSchemaParamClientFoundIsVIPPl"); TODO
             bool isvipplatform = clientVipPlatform; 
 
             EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
@@ -2575,7 +2591,7 @@ namespace AnseremPackage
 
         private void CollectServicesForInsertion()
         {
-            var servicesList = eis.OlpServices_Out; // TODO
+            var servicesList = eis.Services;
 
             bool nagruzka = LoadingCheck;
             int  nagruzkacount = 0;
@@ -2583,14 +2599,10 @@ namespace AnseremPackage
             var list = new CompositeObjectList<CompositeObject>();
 
             foreach (var item in servicesList) {
-                //Если 
-                if (item.TryGetValue<string>("OlpSONumber_Out", out string OrderNumber)){}
-                if (item.TryGetValue<string>("OlpSSNumber1_Out", out string ServiceNumber)){}
-                if (item.TryGetValue<string>("OlpSTNumber_Out", out string TripNumber)){}
-
-                string OrderNumber = item.TryGetValue<string>("OlpSONumber_Out");
-                string ServiceNumber = item.TryGetValue<string>("OlpSSNumber1_Out");
-                string TripNumber = item.TryGetValue<string>("OlpSTNumber_Out");
+ 
+                string OrderNumber = item.OrderNumber;
+                string ServiceNumber = item.ServiceNumber;
+                string TripNumber = item.TripNumber;
 
                 //Если передается пустота - выходим
                 if (ServiceNumber == "0") 
@@ -2647,13 +2659,45 @@ namespace AnseremPackage
 
             return true;
         }
-        
+
+        private Guid GetFirstLineSupport(Guid role)
+        {
+            
+            string sql = @$"
+                SELECT 
+                    sau.Id 
+                FROM 
+                    SysUserInRole suir
+                INNER JOIN
+                    SysAdminUnit sau 
+                ON 
+                    suir.SysUser = sau.Id
+                WHERE
+                    suir.SysRole = '{role}'
+                AND
+                    suir.SysRole = '{OLP_OR_FIRST_LINE_SUPPORT}' 
+                ";
+
+            CustomQuery query = new CustomQuery(UserConnection, sql);
+
+            using (var db = UserConnection.EnsureDBConnection())
+            {
+                using (var reader = sql.ExecureReader(db))
+                {
+                    if (reader.Read())
+                    {
+                        return reader.GetColumnValue<bool>("Id");
+                    }
+                }
+            }
+        }
+
         private bool SendEisRequest()
         {
             string id = "";
             string phone = "";
     
-            // Email here is 'private string email' from activity 
+            // Email here is 'email' from activity 
             string url = $"http://services.aeroclub.int/bpmintegration/profiles/get-info?Id={id}&Email={email}&Phone={phone}"; 
             
             try
@@ -2714,8 +2758,18 @@ namespace AnseremPackage
         public List<Email> Emails { get; set; }
         
         public List<Phone> Phones { get; set; }
+        
+        public List<Service> Services { get; set; }
     }
 
+    public class Service
+    {
+        public string ServiceNumber { get; set; }
+        public string OrderNumber { get; set; }
+        public string JourneyNumber { get; set; }
+        public string TripNumber { get; set; }
+    }
+    
     public class Name
     {
         public string English { get; set; }
