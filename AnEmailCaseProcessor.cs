@@ -270,8 +270,9 @@
 namespace AnseremPackage
 {
     using System;
+    using System.Text;
     using System.Collections.Generic;
-    using Common.Logging;
+    using global::Common.Logging;
     using Terrasoft.Configuration;
     using Terrasoft.Core;
     using Terrasoft.Core.DB;
@@ -279,12 +280,15 @@ namespace AnseremPackage
     using Terrasoft.Core.Entities.Events;
     using System.Net.Http;
     using System.Threading.Tasks;
-    using Newtonsoft.Json;
-    using Newtonsoft.Json.Linq;
 
     [EntityEventListener(SchemaName = nameof(Case))]
     private class AnEmailCaseProcessor: BaseEntityEventListener
     { 
+       
+        private static readonly ILog _log = LogManager.GetLogger("EmailCaseProcessor");
+        
+        private StringBuilder logger = new StringBuilder();
+
         /**CONSTS**/
         private const Guid SERVICE_GROUP_TYPE_MAIN = new Guid("C82CA04F-5319-4611-A6EE-64038BA89D71");
 
@@ -452,15 +456,22 @@ namespace AnseremPackage
             base.OnInserting(sender, e);
             var _case = (Entity)sender;
             caseId = _case.GetTypedColumnValue<Guid>("Id");
+            
+            logger.Append("CaseId: " +  caseId);
 
             // Чтение карточки контакта из обращения
             contact = ReadContactFromCase(_case.GetTypedColumnValue<Guid>("ContactId"));
             
             contactId = contact.GetTypedColumnValue<Guid>("contactId");
+            
+            logger.Append("contactId: " +  contactId);
 
             // Нет (СПАМ) - 2 ЭТАП
             if (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM) 
             {
+                
+                logger.Append("Contact is spam");
+
                 // Спам на обращении + 1 линия поддержки
                 UpdateCaseToFirstLineSupport();
                 return;
@@ -468,6 +479,8 @@ namespace AnseremPackage
 
             parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId");
             
+            logger.Append("parentActivityId: " + parentActivityId);
+
             // email родительской активности
             activity = GetParentActivityFromCase();
 
@@ -477,6 +490,8 @@ namespace AnseremPackage
 
             copies = activity.GetTypedColumnValue<string>("CopyRecepient"); 
             
+            logger.Append("email: " + email + "; mailto: " + emailto + "; copies: " + copies);
+
             /**
              * Чтение всех основных групп для выделения подходящей основной группы
              * Найти основную группу по email в кому/копия
@@ -488,6 +503,9 @@ namespace AnseremPackage
              * Найти дежурную группу по email в кому/копия
              */
             extraServiceGroup = GetServiceGroupExtra();
+            
+            logger.Append("mainServiceGroup: " + mainServiceGroup + "; extraServiceGroup: " + extraServiceGroup);
+
 
             /**
              * Добавить TRAVEL
@@ -505,6 +523,8 @@ namespace AnseremPackage
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty && !isOlpFirstStage && 
                     (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER))
             {
+                logger.Append("Employee, second stage");
+
                 caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER; 
                 /**
                  * Категория (Сотрудник/Поставщик) -2 этап
@@ -517,6 +537,8 @@ namespace AnseremPackage
             // 1 Этап (Сотрудник/Поставщик)
             if (isOlpFirstStage && (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER))
             {
+                logger.Append("First stage, Employee or supplier");
+
                 caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                 goto2();
             }
@@ -524,19 +546,26 @@ namespace AnseremPackage
             // Нет (Новый)
             if (contact.GetTypedColumnValue<Guid>("Account") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty)
             {
+                logger.Append("Not, new");
+
                 account = FetchAccountById(GetAccountIdFromAccountCommunication());
 
                 // Да (Поставщик)
                 if (account != null && account.GetTypedColumnValue<Guid>("Type") == ACCOUNT_TYPE_SUPPLIER)
                 {
+                    logger.Append("Yes, supplier");
+
                     caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                     SetContactType(contact.GetTypedColumnValue<Guid>("Id"), CONTACT_TYPE_SUPPLIER);
                     if (isOlpFirstStage)
                     {
+                        logger.Append("OlpFirstStage");
+
                         goto2();
                     }
                     else
                     {
+                        logger.Append("Not OlpFirstStage");
                         UpdateCaseToFirstLineSupport();
                     }
                 }
@@ -544,14 +573,20 @@ namespace AnseremPackage
                 // Да (Аэроклуб)
                 if (account != Guid.Empty && account.GetTypedColumnValue<Guid>("Type") == ACCOUNT_TYPE_OUR_COMPANY)
                 {
+                    logger.Append("Yes, aerolcub");
+
                     caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
+
                     SetContactType(contact.GetTypedColumnValue<Guid>("Id"), CONTACT_TYPE_EMPLOYEE);
+                    
                     if (isOlpFirstStage)
                     {
+                        logger.Append("OlpFirstStage");
                         goto2();
                     }
                     else
                     {
+                        logger.Append("Not OlpFirstStage");
                         UpdateCaseToFirstLineSupport();
                     }
                 }
@@ -564,6 +599,7 @@ namespace AnseremPackage
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty && 
                     (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_CLIENT || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
+                logger.Append("Yes, client or spam");
                 EisPath();
             }
         }
@@ -571,10 +607,12 @@ namespace AnseremPackage
         private void EisPath()
         {
             isResponseSuccessful = SendEisRequest();
-
+            logger.Append("isResponseSuccessful: " + isResponseSuccessful);
             // Да
             if (isResponseSuccessful || (isResponseSuccessful && contact.aeroclubCheck))
             {
+                logger.Append("EISpath: Yes");
+
                 account = FetchAccountByEis(eis.Company);
 
                 RefreshEmailsAndPhones();
@@ -590,15 +628,19 @@ namespace AnseremPackage
             // Нет по домену и нет по ЕИС и (пустой тип или СПАМ)
             if (isResponseSuccessful && contact.account == Guid.Empty && (contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
+                logger.Append("EISpath: Not by domain, not by eis and empty or spam");
+
                 // категория СПАМ
                 caseCategory = CONTACT_TYPE_UNDEFINED_CLIENT_SPAM;
                 if (isOlpFirstStage)
                 {
+                    logger.Append("OlpFirstStage");
                     SetSpamOnCase();
                     goto2();
                 }
                 else
                 {
+                    logger.Append("Not OlpFirstStage");
                     SetSpamOnCase();   
                     return;
                 }
@@ -608,12 +650,15 @@ namespace AnseremPackage
             // Да
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty)
             {
+                logger.Append("Not by eis: Yes");
+
                 // Актуализировать тип контакта + Email 
                 RefreshContactTypeAndEmail();
             }
             // Нет
             else
             {
+                logger.Append("Not by eis: Not");
                 // Актуализировать компанию контакта + Email
                 RefreshContactCompanyAndEmail();
             }
@@ -623,6 +668,8 @@ namespace AnseremPackage
 
         private void goto2()
         {
+            logger.Append("goto2");
+
             // Найти данные компании привязанной к контакту ненайденного в ЕИС
             // Выставить холдинг компании контакта
             holding = GetHoldingFromAccountBindedToEis();            
@@ -638,6 +685,8 @@ namespace AnseremPackage
          */
         private void ReadContactAfterRefreshing()
         {
+            logger.Append("ReadContactAfterRefreshing");
+
             GetContactAfterRefreshing(contact.GetTypedColumnValue<Guid>("Id"));
 
             clientVip = contact.GetTypedColumnValue<bool>("OlpSignVip");
@@ -652,10 +701,13 @@ namespace AnseremPackage
             // Найти основную ГО для контакта по компаниям и ВИП Платформа
             GetMainServiceGroup();
 
+            logger.Append("Is service group found by company vip platform");
             // Найдена ли группа по компании ВИП Платформа?
             // Да
             if (!isExtraServiceGroup && !isOlpFirstStage)
             {
+                logger.Append("Yes");
+
                 // Найти ГО основную по графику работы 
                 GetMainServiceGroupBasedOnTimetable(); 
                 goto4();
@@ -664,23 +716,31 @@ namespace AnseremPackage
             // Этап 1
             if (isOlpFirstStage)
             {
+                logger.Append("First stage");
+
                 // Есть ГО
                 if (!isExtraServiceGroup)
                 {
+                    logger.Append("Service group is found");
+
                     // Найти ГО  основную по графику работы 1 этап
                     GetMainServiceGroupBasedOnTimetableOlpFirstStage(); 
                 }
 
                 // Какую ГО установить?
+                logger.Append("Which service group to set");
+
                 // Указана только дежурная в кому/копии
                 if (mainServiceGroup == Guid.Empty && extraServiceGroupFromAndCopy != Guid.Empty && isExtraServiceGroup) // Разобраться с параметрами
                 {
+                    logger.Append("Only duty group was in to/copy");
                     goto5();
                 }
 
                 // Найдена ГО по компании и графику клиента и почтовому адресу
                 else if (!extraServiceGroup)
                 {
+                    logger.Append("Service group was found by company and timetable and email addres");
                     SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                     SetAutonotification();
                     goto6();
@@ -689,6 +749,8 @@ namespace AnseremPackage
                 // Указана осн ГО в кому/копии
                 else if (mainServiceGroup == Guid.Empty && isExtraServiceGroup)
                 {
+                    logger.Append("Main service group in to/copy");
+
                     // Найти осн из почты по графику
                     GetMainServiceGroupFromMainBasedOnTimeTable(); 
                     if (isExtraServiceGroup && extraServiceGroupFromAndCopy)
@@ -731,9 +793,11 @@ namespace AnseremPackage
 
         private void goto4()
         {
+            logger.Append("goto4");
             // Дежурная ГО 2 линия поддержки
             if (extraServiceGroup && isVipClient)
             {
+                logger.Append("Duty group second line of support");
                 selectedServiceGroupId = OLP_DUTY_SERVICE_GROUP;
                 goto5();
             }
@@ -741,12 +805,14 @@ namespace AnseremPackage
             // Основная клиентская/ВИП Платформа
             else if (!extraServiceGroup)
             {
+                logger.Append("Main clients/vip platform");
                 goto5();
             }
 
             // Общая 1 линия поддержки
             else if (extraServiceGroup && isVipClient)
             {
+                logger.Append("General first line of support");
                 selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
                 SetFirstLineSupport();
                 goto7();
@@ -755,6 +821,8 @@ namespace AnseremPackage
 
         private void goto5()
         {
+            logger.Append("goto5");
+
             // Найти ГО дежурную из кому/копии по графику работы
             GetExtraServiceGroupFromFromAndCopyBaseOnTimetable();
             
@@ -778,6 +846,8 @@ namespace AnseremPackage
 
         private void goto6()
         {
+            logger.Append("goto6");
+
             var serviceGroup = GetServiceGroupBySelectedId();
 
             // Выбранная ГО ВИП Платформа?
@@ -814,6 +884,7 @@ namespace AnseremPackage
             if (activity.GetTypedColumnValue<Guid>("Priority") == ACTIVITY_PRIORITY_HIGH)
             {
                 importancy = CASE_IMPORTANCY_IMPOTANT;
+                logger.Append("importancy : " + importancy);
             }
 
             if (firstLineSupport)
@@ -824,6 +895,7 @@ namespace AnseremPackage
             if (!firstLineSupport && isOlpFirstStage)
             {
                 selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
+                logger.Append("selectedServiceGroupId: " + selectedServiceGroupId);
                 SetFirstLineSupport();
                 goto7();
             }
@@ -834,8 +906,12 @@ namespace AnseremPackage
          * */
         private void goto7()
         {
+            logger.Append("goto7");
+
             if (isResponseSuccessful)
             {
+                
+                logger.Append("Eis success");
                 return;
             }
        
@@ -893,6 +969,8 @@ namespace AnseremPackage
 
         private Contact ReadContactFromCase(Guid contactId)
         {
+            logger.Append("ReadContactFromCase");
+
             var contact = new Contact(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Contact.Id), contactId}, 
@@ -906,24 +984,34 @@ namespace AnseremPackage
 
         private void UpdateCaseToFirstLineSupport()
         {
-            string sql = @$"
-                UPDATE 
+            logger.Append("UpdateCaseToFirstLineSupport");
+            try
+            {
+                string sql = @$"
+                    UPDATE 
                     \"Case\"
-                SET 
+                    SET 
                     OlpGroupServices = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', 
-                    OlpSupportLine = '{OLP_OR_FIRST_LINE_SUPPORT}',
-                    OlpImportant = '{CASE_IMPORTANCY_NOT_IMPOTANT}',
-                    OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
-                    Category = '{caseCategory}'
-                WHERE 
-                    Id = '{caseId}'
-            ";
-            CustomQuery query = new CustomQuery(UserConnection, sql);
-            query.Execute();
+                                     OlpSupportLine = '{OLP_OR_FIRST_LINE_SUPPORT}',
+                                     OlpImportant = '{CASE_IMPORTANCY_NOT_IMPOTANT}',
+                                     OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
+                                     Category = '{caseCategory}'
+                                         WHERE 
+                                         Id = '{caseId}'
+                                         ";
+                CustomQuery query = new CustomQuery(UserConnection, sql);
+                query.Execute();
+            }
+            catch (Exception e)
+            {
+                _log.Error("Exception at UpdateCaseToFirstLineSupport: " + e);
+            }
         }
 
         private Activity GetParentActivityFromCase()
         {
+ 
+            logger.Append("GetParentActivityFromCase");
             var activity = new Activity(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Activity.Id), contactId },
@@ -939,221 +1027,264 @@ namespace AnseremPackage
         // Найти дежурную группу по email в кому/копия
         private Guid GetServiceGroupExtra()
         {
-            string sql = @$"
-                SELECT * FROM OlpServiceGroup
-                WHERE Id IS NOT NULL AND
-                OlpSgEmail IS NOT NULL AND
-                OlpTypeGroupService = '{SERVICE_GROUP_TYPE_EXTRA}' 
-                ";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
-
-            using (var db = UserConnection.EnsureDBConnection())
+            logger.Append("GetServiceGroupExtra");
+            try
             {
-                using (var reader = sql.ExecureReader(db))
+                string sql = @$"
+                    SELECT * FROM OlpServiceGroup
+                    WHERE Id IS NOT NULL AND
+                    OlpSgEmail IS NOT NULL AND
+                    OlpTypeGroupService = '{SERVICE_GROUP_TYPE_EXTRA}' 
+                    ";
+
+                CustomQuery query = new CustomQuery(UserConnection, sql);
+
+                using (var db = UserConnection.EnsureDBConnection())
                 {
-
-                    Guid ExtraGroupIdTemp = System.Guid.Empty;
-
-                    while (reader.Read())
+                    using (var reader = sql.ExecureReader(db))
                     {
-                        /**LEGACY**/
-                        string EmailBoxName = "";
-                        string EmailBoxALias = "";
-                        
-                        ExtraGroupId = reader.GetColumnValue<string>("ExtraGroupId");
 
-                        ExtraEmailBox = reader.GetColumnValue<string>("ExtraGroupEmailBoxId");
+                        Guid ExtraGroupIdTemp = System.Guid.Empty;
 
-                        //ищем текстовое значение ящика по ГО
-                        EntitySchemaQuery ExtraEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
-                        ExtraEmailBoxString.PrimaryQueryColumn.IsAlwaysSelect = true;
-                        ExtraEmailBoxString.ChunkSize = 1;
-                        ExtraEmailBoxString.Filters.Add(ExtraEmailBoxString.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ExtraGroupEmailBoxId));
-                        ExtraEmailBoxString.AddColumn("Name");
-                        ExtraEmailBoxString.AddColumn("AliasAddress");
-
-                        var MailboxSyncSettings = ExtraEmailBoxString.AddColumn("MailboxSyncSettings.Id"); //Ид. ящика из настройки почтовых ящиков
-                        EntityCollection CollectionEmailText = ExtraEmailBoxString.GetEntityCollection(UserConnection);
-                        //Найден ящик для регистрации обращений
-                        if (CollectionEmailText.IsNotEmpty())
+                        while (reader.Read())
                         {
-                            foreach (var itemsemail in CollectionEmailText)
-                            {
-                                EmailBoxName = itemsemail.GetTypedColumnValue<string>("Name"); //название в справочнике ящиков для рег. обращений
-                                EmailBoxALias = itemsemail.GetTypedColumnValue<string>("AliasAddress");
-                                if( !string.IsNullOrEmpty(EmailBoxALias)){    
-                                    string[] words = EmailBoxName.Split('(');
-                                    EmailBoxName = words[0];}
+                            /**LEGACY**/
+                            string EmailBoxName = "";
+                            string EmailBoxALias = "";
 
-                                if (!string.IsNullOrEmpty(EmailBoxALias) && (email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
-                                            || email.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
-                                            || copies.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
-                                            || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim())))
+                            ExtraGroupId = reader.GetColumnValue<string>("ExtraGroupId");
+
+                            ExtraEmailBox = reader.GetColumnValue<string>("ExtraGroupEmailBoxId");
+
+                            //ищем текстовое значение ящика по ГО
+                            EntitySchemaQuery ExtraEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
+                            ExtraEmailBoxString.PrimaryQueryColumn.IsAlwaysSelect = true;
+                            ExtraEmailBoxString.ChunkSize = 1;
+                            ExtraEmailBoxString.Filters.Add(ExtraEmailBoxString.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ExtraGroupEmailBoxId));
+                            ExtraEmailBoxString.AddColumn("Name");
+                            ExtraEmailBoxString.AddColumn("AliasAddress");
+
+                            var MailboxSyncSettings = ExtraEmailBoxString.AddColumn("MailboxSyncSettings.Id"); //Ид. ящика из настройки почтовых ящиков
+                            EntityCollection CollectionEmailText = ExtraEmailBoxString.GetEntityCollection(UserConnection);
+                            //Найден ящик для регистрации обращений
+                            if (CollectionEmailText.IsNotEmpty())
+                            {
+                                foreach (var itemsemail in CollectionEmailText)
                                 {
-                                    ExtraGroupIdByEmail = ExtraGroupId;
-                                    ExtraGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
-                                    ExtraGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
-                                    ExtraGroupIdTemp = ExtraGroupId;
-                                }
-                                else if(email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
-                                        || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim()))
-                                {
-                                    ExtraGroupIdByEmail = ExtraGroupId;
-                                    ExtraGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
-                                    ExtraGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
-                                    ExtraGroupIdTemp = ExtraGroupId;
+                                    EmailBoxName = itemsemail.GetTypedColumnValue<string>("Name"); //название в справочнике ящиков для рег. обращений
+                                    EmailBoxALias = itemsemail.GetTypedColumnValue<string>("AliasAddress");
+                                    if( !string.IsNullOrEmpty(EmailBoxALias)){    
+                                        string[] words = EmailBoxName.Split('(');
+                                        EmailBoxName = words[0];}
+
+                                    if (!string.IsNullOrEmpty(EmailBoxALias) && (email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
+                                                || email.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
+                                                || copies.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
+                                                || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim())))
+                                    {
+                                        ExtraGroupIdByEmail = ExtraGroupId;
+                                        ExtraGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
+                                        ExtraGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
+                                        ExtraGroupIdTemp = ExtraGroupId;
+                                    }
+                                    else if(email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
+                                            || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim()))
+                                    {
+                                        ExtraGroupIdByEmail = ExtraGroupId;
+                                        ExtraGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
+                                        ExtraGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
+                                        ExtraGroupIdTemp = ExtraGroupId;
+                                    }
                                 }
                             }
-                        }
 
-                        if (ExtraGroupIdTemp != Guid.Empty)
-                        {
-
-                            EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
-                            esq.PrimaryQueryColumn.IsAlwaysSelect = true;
-                            esq.ChunkSize = 1;
-                            var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
-                            esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ExtraGroupIdTemp));
-                            EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
-                            //Идем в цикл если коллекция не пустая
-                            if (entityCollection.IsNotEmpty()) 
+                            if (ExtraGroupIdTemp != Guid.Empty)
                             {
-                                foreach (var groupsshedule in entityCollection) 
+
+                                EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                                esq.PrimaryQueryColumn.IsAlwaysSelect = true;
+                                esq.ChunkSize = 1;
+                                var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
+                                esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ExtraGroupIdTemp));
+                                EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+                                //Идем в цикл если коллекция не пустая
+                                if (entityCollection.IsNotEmpty()) 
                                 {
-                                    ExtraSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
-                                    return;
+                                    foreach (var groupsshedule in entityCollection) 
+                                    {
+                                        ExtraSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
+                                        return;
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                return;
+                /**LEGACY**/
+                catch (Exception e)
+                {
+                    _log.Error("Exception at GetServiceGroupExtra: " + e);
+                }
+
             }
-            return;
-            /**LEGACY**/
-        }
-        
+
         // Найти основную группу по email в кому/копия
         private Guid GetServiceGroupMain()
         {
-            string sql = @$"
-                SELECT * FROM OlpServiceGroup
-                WHERE Id IS NOT NULL AND
-                OlpSgEmail IS NOT NULL AND
-                OlpTypeGroupService = '{SERVICE_GROUP_TYPE_MAIN}' 
-                "; 
-
-            CustomQuery query = new CustomQuery(UserConnection, sql);
-
-            using (var db = UserConnection.EnsureDBConnection())
+            logger.Append("GetServiceGroupMain");
+            try
             {
-                using (var reader = sql.ExecureReader(db))
+                string sql = @$"
+                    SELECT * FROM OlpServiceGroup
+                    WHERE Id IS NOT NULL AND
+                    OlpSgEmail IS NOT NULL AND
+                    OlpTypeGroupService = '{SERVICE_GROUP_TYPE_MAIN}' 
+                    "; 
+
+                    CustomQuery query = new CustomQuery(UserConnection, sql);
+
+                using (var db = UserConnection.EnsureDBConnection())
                 {
-                    Guid MainGroupIdTemp = Guid.Empty;
-
-                    while (reader.Read())
+                    using (var reader = sql.ExecureReader(db))
                     {
+                        Guid MainGroupIdTemp = Guid.Empty;
 
-                        /**LEGACY**/
-                        string EmailBoxName = "";
-                        string EmailBoxALias = "";
-
-                        // Ид.ГО
-                        Guid MainGroupId = reader.GetColumnValue<Guid>("MainGroupId");
-
-                        // Ид.почтового ящика основной группы
-                        Guid MainGroupEmailBoxId = reader.GetColumnValue<Guid>("MainGroupEmailBoxId");
-
-                        //ищем текстовое значение ящика по ГО
-                        EntitySchemaQuery EsqEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
-                        EsqEmailBoxString.PrimaryQueryColumn.IsAlwaysSelect = true;
-                        EsqEmailBoxString.ChunkSize = 1;
-                        EsqEmailBoxString.Filters.Add(EsqEmailBoxString.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", MainGroupEmailBoxId));
-                        EsqEmailBoxString.AddColumn("Name");
-                        EsqEmailBoxString.AddColumn("AliasAddress");
-
-                        var MailboxSyncSettings= EsqEmailBoxString.AddColumn("MailboxSyncSettings.Id"); //Ид. ящика из настройки почтовых ящиков
-
-                        EntityCollection CollectionEmailText = EsqEmailBoxString.GetEntityCollection(UserConnection);
-
-                        //Найден ящик для регистрации обращений
-                        if (CollectionEmailText.IsNotEmpty()){
-                            foreach (var itemsemail in CollectionEmailText){
-                                EmailBoxName = itemsemail.GetTypedColumnValue<string>("Name"); //название в справочнике ящиков для рег. обращений
-                                EmailBoxALias = itemsemail.GetTypedColumnValue<string>("AliasAddress");
-                                //	var servicegroupid = itemsemail.GetTypedColumnValue<Guid>("Id");
-
-                                if( !string.IsNullOrEmpty(EmailBoxALias))
-                                {
-                                    string[] words = EmailBoxName.Split('(');
-                                    EmailBoxName = words[0];
-                                }
-
-                                if (!string.IsNullOrEmpty(EmailBoxALias) && (email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
-                                            || email.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
-                                            || copies.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
-                                            || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim())))
-                                {
-                                    MainGroupIdByEmail = MainGroupId;
-                                    MainGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
-                                    MainGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
-                                    MainEmailBoxIdForReg = itemsemail.GetTypedColumnValue<Guid>("Id");
-                                    MainGroupIdTemp = MainGroupId;
-                                }
-                                else if(email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
-                                        || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim()))
-                                {
-                                    MainGroupIdByEmail = MainGroupId;
-                                    MainGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
-                                    MainGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
-                                    MainEmailBoxIdForReg = itemsemail.GetTypedColumnValue<Guid>("Id");
-                                    MainGroupIdTemp = MainGroupId;
-                                }
-                            }
-                        }
-
-                        if (MainGroupIdTemp != Guid.Empty)
+                        while (reader.Read())
                         {
-                            EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
-                            esq.PrimaryQueryColumn.IsAlwaysSelect = true;
-                            esq.ChunkSize = 1;
-                            var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
 
-                            esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", MainGroupIdTemp));
+                            /**LEGACY**/
+                            string EmailBoxName = "";
+                            string EmailBoxALias = "";
 
-                            EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+                            // Ид.ГО
+                            Guid MainGroupId = reader.GetColumnValue<Guid>("MainGroupId");
 
-                            //Идем в цикл если коллекция не пустая
-                            if (entityCollection.IsNotEmpty()) 
-                            {
-                                foreach (var groupsshedule in entityCollection) 
-                                {
-                                    MainSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name));
-                                    return;
+                            // Ид.почтового ящика основной группы
+                            Guid MainGroupEmailBoxId = reader.GetColumnValue<Guid>("MainGroupEmailBoxId");
+
+                            //ищем текстовое значение ящика по ГО
+                            EntitySchemaQuery EsqEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
+                            EsqEmailBoxString.PrimaryQueryColumn.IsAlwaysSelect = true;
+                            EsqEmailBoxString.ChunkSize = 1;
+                            EsqEmailBoxString.Filters.Add(EsqEmailBoxString.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", MainGroupEmailBoxId));
+                            EsqEmailBoxString.AddColumn("Name");
+                            EsqEmailBoxString.AddColumn("AliasAddress");
+
+                            var MailboxSyncSettings= EsqEmailBoxString.AddColumn("MailboxSyncSettings.Id"); //Ид. ящика из настройки почтовых ящиков
+
+                            EntityCollection CollectionEmailText = EsqEmailBoxString.GetEntityCollection(UserConnection);
+
+                            //Найден ящик для регистрации обращений
+                            if (CollectionEmailText.IsNotEmpty()){
+                                foreach (var itemsemail in CollectionEmailText){
+                                    EmailBoxName = itemsemail.GetTypedColumnValue<string>("Name"); //название в справочнике ящиков для рег. обращений
+                                    EmailBoxALias = itemsemail.GetTypedColumnValue<string>("AliasAddress");
+                                    //	var servicegroupid = itemsemail.GetTypedColumnValue<Guid>("Id");
+
+                                    if( !string.IsNullOrEmpty(EmailBoxALias))
+                                    {
+                                        string[] words = EmailBoxName.Split('(');
+                                        EmailBoxName = words[0];
+                                    }
+
+                                    if (!string.IsNullOrEmpty(EmailBoxALias) && (email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
+                                                || email.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
+                                                || copies.ToUpper().Contains(EmailBoxALias.ToUpper().Trim())
+                                                || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim())))
+                                    {
+                                        MainGroupIdByEmail = MainGroupId;
+                                        MainGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
+                                        MainGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
+                                        MainEmailBoxIdForReg = itemsemail.GetTypedColumnValue<Guid>("Id");
+                                        MainGroupIdTemp = MainGroupId;
+                                    }
+                                    else if(email.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
+                                            || copies.ToUpper().Contains(EmailBoxName.ToUpper().Trim()))
+                                    {
+                                        MainGroupIdByEmail = MainGroupId;
+                                        MainGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
+                                        MainGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
+                                        MainEmailBoxIdForReg = itemsemail.GetTypedColumnValue<Guid>("Id");
+                                        MainGroupIdTemp = MainGroupId;
+                                    }
                                 }
                             }
-                            return;
+
+                            if (MainGroupIdTemp != Guid.Empty)
+                            {
+                                EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                                esq.PrimaryQueryColumn.IsAlwaysSelect = true;
+                                esq.ChunkSize = 1;
+                                var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
+
+                                esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", MainGroupIdTemp));
+
+                                EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+
+                                //Идем в цикл если коллекция не пустая
+                                if (entityCollection.IsNotEmpty()) 
+                                {
+                                    foreach (var groupsshedule in entityCollection) 
+                                    {
+                                        MainSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name));
+                                        return;
+                                    }
+                                }
+                                return;
+                            }
                         }
                     }
                 }
+                return;
             }
-            return;
+            catch (Exception e)
+            {
+                _log.Error("Exception at GetServiceGroupMain: " + e);
+            }
+
             /**LEGACY**/
         }
 
         private void SetTravelParameter()
         {
-            var title = activity.GetTypedColumnValue<string>("Title");
-            var body = activity.GetTypedColumnValue<string>("Body");
-            if (!string.IsNullOrEmpty(title))
+
+            logger.Append("SetTravelParameter");
+
+            try
             {
-                themetravel = "";
-                if (!string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("TRAVEL-"))
+                var title = activity.GetTypedColumnValue<string>("Title");
+                var body = activity.GetTypedColumnValue<string>("Body");
+            
+                logger.Append("title: " + title + "; body: " + body);
+                
+                if (!string.IsNullOrEmpty(title))
+                {
+                    themetravel = "";
+                    if (!string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("TRAVEL-"))
+                    {
+
+                        var regex = new Regex(@"(?<=TRAVEL-)\d+");
+
+                        foreach (Match match in regex.Matches(theme))
+                        {
+                            themetravel = match.Value.ToString();
+                            if(!string.IsNullOrEmpty(themetravel))
+                            {
+                                themetravel = "TRAVEL-" + themetravel;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(body) && body.ToUpper().Contains("TRAVEL-"))
                 {
 
                     var regex = new Regex(@"(?<=TRAVEL-)\d+");
 
-                    foreach (Match match in regex.Matches(theme))
+                    foreach (Match match in regex.Matches(body))
                     {
                         themetravel = match.Value.ToString();
                         if(!string.IsNullOrEmpty(themetravel))
@@ -1162,90 +1293,96 @@ namespace AnseremPackage
                             break;
                         }
                     }
-                }
-            }
 
-            if (string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(body) && body.ToUpper().Contains("TRAVEL-"))
+                }
+
+
+                string sql = @$"
+                    UPDATE 
+                        \"Case\" 
+                    SET 
+                        OlpReloThemeSibur = '{themetravel}',
+                    WHERE 
+                        id = '{caseId}';
+                    
+                    UPDATE 
+                        \"Case\"
+                    SET 
+                        OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
+                    WHERE 
+                        statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}' 
+                ";
+
+                CustomQuery query = new CustomQuery(UserConnection, sql);
+                query.Execute();
+            }
+            catch (Exception e)
             {
-
-                var regex = new Regex(@"(?<=TRAVEL-)\d+");
-
-                foreach (Match match in regex.Matches(body))
-                {
-                    themetravel = match.Value.ToString();
-                    if(!string.IsNullOrEmpty(themetravel))
-                    {
-                        themetravel = "TRAVEL-" + themetravel;
-                        break;
-                    }
-                }
-
+                _log.Error("Exception at SetTravelParameter: " + e);
             }
-
-            string sql = @$"
-                UPDATE 
-                    \"Case\" 
-                SET 
-                    OlpReloThemeSibur = '{themetravel}',
-                WHERE 
-                    id = '{caseId}';
-                
-                UPDATE 
-                    \"Case\"
-                SET 
-                    OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
-                WHERE 
-                    statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}' 
-            ";
-
-            CustomQuery query = new CustomQuery(UserConnection, sql);
-            query.Execute();
 
         }
 
         private void SetSiburParameter()
         {
-            var title = activity.GetTypedColumnValue<string>("Title");
-            var body = activity.GetTypedColumnValue<string>("Body");
-
-            if (!string.IsNullOrEmpty(title))
+            logger.Append("SetSiburParameter");
+            try
             {
-                if(string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("ЗАЯВКА ПО РЕЛОКАЦИИ_")) 
-                {
+                var title = activity.GetTypedColumnValue<string>("Title");
+                var body = activity.GetTypedColumnValue<string>("Body");
 
-                    var regexurgent = new Regex(@"(?<=Заявка по релокации_)\[(.+)\]");
-                    foreach (Match match in regexurgent.Matches(theme))
+                logger.Append("title: " + title + "; body: " + body);
+
+                if (!string.IsNullOrEmpty(title))
+                {
+                    if(string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("ЗАЯВКА ПО РЕЛОКАЦИИ_")) 
                     {
-                        themetravel = match.Value.ToString();
-                        if(!string.IsNullOrEmpty(themetravel)){
-                            themetravel = "Заявка по релокации_" + themetravel;
-                            break;
+
+                        var regexurgent = new Regex(@"(?<=Заявка по релокации_)\[(.+)\]");
+                        foreach (Match match in regexurgent.Matches(theme))
+                        {
+                            themetravel = match.Value.ToString();
+                            if(!string.IsNullOrEmpty(themetravel))
+                            {
+                                themetravel = "Заявка по релокации_" + themetravel;
+                                break;
+                            }
                         }
                     }
                 }
+                
+                string sql1 = @$" 
+                    UPDATE 
+                        \"Case\" 
+                    SET 
+                        OlpReloThemeSibur = '{themetravel}',
+                    WHERE 
+                        id = '{caseId}'";
+                    
+                string sql2 = @$" 
+                    UPDATE 
+                        \"Case\"
+                    SET 
+                        OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
+                    WHERE 
+                        statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
+
+                CustomQuery query1 = new CustomQuery(UserConnection, sql1);
+                CustomQuery query2 = new CustomQuery(UserConnection, sql2);
+                query1.Execute();
+                query2.Execute();
+            }
+            catch (Exception e)
+            {
+                _log.Error("Exception at SetSiburParameter: " + e);
             }
 
-            string sql = @$" 
-                UPDATE 
-                    \"Case\" 
-                SET 
-                    OlpReloThemeSibur = '{themetravel}',
-                WHERE 
-                    id = '{caseId}';
-                
-                UPDATE 
-                    \"Case\"
-                SET 
-                    OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
-                WHERE 
-                    statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}' 
-                ";
-            CustomQuery query = new CustomQuery(UserConnection, sql);
-            query.Execute();    
         }
 
         private Guid GetAccountIdFromAccountCommunication()
         {
+            logger.Append("GetAccountIdFromAccountCommunication");
+
             string sql = @$"
                 SELECT TOP 1 * FROM AccountCommunication
                 WHERE 
@@ -1278,6 +1415,8 @@ namespace AnseremPackage
 
         private void FetchAccountById(Guid accountId)
         {
+            logger.Append("FetchAccountById");
+
             var account = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Account.Id), accountId },
@@ -1291,6 +1430,7 @@ namespace AnseremPackage
 
         private Account FetchAccountByEis(Guid accountId)
         {
+            logger.Append("FetchAccountByEis");
             var account = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Account.OlpCode), accountId },
@@ -1304,6 +1444,7 @@ namespace AnseremPackage
 
         private void SetContactType(Guid contactId, Guid type)
         {
+            logger.Append("SetContactType");
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
             var companyId = account.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
@@ -1320,6 +1461,7 @@ namespace AnseremPackage
 
         private void SetSpamOnCase()
         {
+            logger.Append("SetSpamOnCase");
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
                 UPDATE 
@@ -1336,6 +1478,7 @@ namespace AnseremPackage
 
         private void RefreshContact()
         {
+            logger.Append("RefreshContact");
             string OlpLnFnPat = eis.FirstName.English + " " + eis.MiddleName.English + " " + eis.LastName.English
             string sql = @$"
                 UPDATE
@@ -1364,6 +1507,7 @@ namespace AnseremPackage
 
         private void RefreshContactCompanyAndEmail()
         {
+            logger.Append("RefreshContactCompanyAndEmail");
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             var accountId = account.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
@@ -1382,6 +1526,8 @@ namespace AnseremPackage
 
         private void RefreshContactTypeAndEmail()
         {
+            logger.Append("RefreshContactTypeAndEmail");
+
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
                 UPDATE 
@@ -1398,6 +1544,7 @@ namespace AnseremPackage
 
         private void GetHoldingFromAccountBindedToEis()
         {
+            logger.Append("GetHoldingFromAccountBindedToEis");
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
                 SELECT OlpHoldingId FROM Contact c 
@@ -1421,6 +1568,7 @@ namespace AnseremPackage
 
         private void GetContactAfterRefreshing(Guid contactId)
         {
+            logger.Append("GetContactAfterRefreshing");
             var updatedContact = new Contact(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Contact.Id), contactId}, 
@@ -1434,6 +1582,7 @@ namespace AnseremPackage
 
         private void AddAccountToEmail()
         {
+            logger.Append("AddAccountToEmail");
             string sql = @$"
                 UPDATE 
                     Activity
@@ -1448,6 +1597,7 @@ namespace AnseremPackage
 
         private OlpServiceGroup GetServiceGroupBySelectedId()
         {
+            logger.Append("GetServiceGroupBySelectedId");
             var serviceGroup = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Account.Id), selectedServiceGroupId},
@@ -1462,6 +1612,7 @@ namespace AnseremPackage
         // Найти основную ГО для контакта по компаниям и ВИП Платформа
         private void GetMainServiceGroup()
         {
+            logger.Append("GetMainServiceGroup");
             /**LEGACY**/
 
             //Считать признак поиска в ЕИС
@@ -1537,6 +1688,7 @@ namespace AnseremPackage
         // Найти ГО основную по графику работы
         private void GetMainServiceGroupBasedOnTimetable()
         {
+            logger.Append("GetMainServiceGroupBasedOnTimetable");
             /**LEGACY**/
 
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
@@ -1685,6 +1837,7 @@ namespace AnseremPackage
         private void GetMainServiceGroupBasedOnTimetableOlpFirstStage()
         {
             /**LEGACY**/
+            logger.Append("GetMainServiceGroupBasedOnTimetableOlpFirstStage");
          
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
             var servicegrouplist = ProcessSchemaParameterServiceGroupCollection;
@@ -1825,6 +1978,7 @@ namespace AnseremPackage
         // Найти осн из почты по графику
         private void GetMainServiceGroupFromMainBasedOnTimeTable()
         {
+            logger.Append("GetMainServiceGroupFromMainBasedOnTimeTable");
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
 
             Guid ServiceGroupId = MainGroupIdByEmail;
@@ -2019,6 +2173,7 @@ namespace AnseremPackage
         // Найти ГО дежурную из кому/копии по графику работы
         private void GetExtraServiceGroupFromFromAndCopyBaseOnTimetable()
         {
+            logger.Append("GetExtraServiceGroupFromFromAndCopyBaseOnTimetable");
             /**LEGACY**/
             
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
@@ -2164,6 +2319,7 @@ namespace AnseremPackage
         // Найти ГО дежурную по графику работы
         private void GetExtraServiceGroupBaseOnTimetable()
         {
+            logger.Append("GetExtraServiceGroupBaseOnTimetable");
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
 
             Guid ServiceGroupId = OLP_DUTY_SERVICE_GROUP; 
@@ -2324,6 +2480,7 @@ namespace AnseremPackage
 
         private void SetFirstLineSupport()
         {
+            logger.Append("SetFirstLineSupport");
             string sql = @$"
                 UPDATE 
                    \"Case\"
@@ -2346,6 +2503,7 @@ namespace AnseremPackage
 
         private void SetSecondLineSupport()
         {
+            logger.Append("SetSecondLineSupport");
             string sql = @$" 
                 UPDATE 
                    \"Case\"
@@ -2367,6 +2525,8 @@ namespace AnseremPackage
 
         private void SetThirdLineSupport()
         {
+            logger.Append("SetThirdLineSupport");
+
             string sql = @$"
                 UPDATE 
                    \"Case\"
@@ -2392,6 +2552,7 @@ namespace AnseremPackage
          * */
         private void SendBookAutoreply()
         {
+            logger.Append("SendBookAutoreply");
             return;
         }
 
@@ -2400,6 +2561,8 @@ namespace AnseremPackage
          * */
         private void SetAutonotification()
         {
+            logger.Append("SetAutonotification");
+            return;
             string sql = @$"
                 UPDATE
                     Activity
@@ -2414,6 +2577,9 @@ namespace AnseremPackage
 
         private void RefreshEmailsAndPhones()
         {
+
+            logger.Append("RefreshEmailsAndPhones");
+
             /**LEGACY**/
 
             // обновление/добавление почты
@@ -2505,6 +2671,7 @@ namespace AnseremPackage
         private void GetMainServiceGroupForContactBasedOnCompany()
         {
             /**LEGACY**/
+            logger.Append("GetMainServiceGroupForContactBasedOnCompany");
             
             //Считать признак поиска в ЕИС
             //Считать Ид. компании 
@@ -2564,6 +2731,8 @@ namespace AnseremPackage
 
         private void GetLoadingCheck()
         {
+            logger.Append("GetLoadingCheck");
+
             sql = @$"
                 SELECT 
                     BooleanValue 
@@ -2591,6 +2760,8 @@ namespace AnseremPackage
 
         private void CollectServicesForInsertion()
         {
+            logger.Append("CollectServicesForInsertion");
+
             var servicesList = eis.Services;
 
             bool nagruzka = LoadingCheck;
@@ -2663,6 +2834,7 @@ namespace AnseremPackage
         private Guid GetFirstLineSupport(Guid role)
         {
             
+            logger.Append("GetFirstLineSupport");
             string sql = @$"
                 SELECT 
                     sau.Id 
@@ -2694,6 +2866,7 @@ namespace AnseremPackage
 
         private bool SendEisRequest()
         {
+            logger.Append("SendEisRequest");
             string id = "";
             string phone = "";
     
