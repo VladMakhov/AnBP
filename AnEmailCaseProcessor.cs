@@ -276,8 +276,10 @@ namespace AnseremPackage
     using Terrasoft.Core;
     using Terrasoft.Configuration;
     using Terrasoft.Common;
+    using Terrasoft.Core;
     using Terrasoft.Core.DB;
     using Terrasoft.Core.Entities;
+    using Terrasoft.Core.Process;
     using Terrasoft.Core.Entities.Events;
     using System.Net.Http;
     using System.Threading.Tasks;
@@ -289,6 +291,8 @@ namespace AnseremPackage
         private static readonly ILog _log = LogManager.GetLogger("EmailCaseProcessor");
 
         /**CONSTS**/
+        private UserConnection _userConnection;
+
         private Guid SERVICE_GROUP_TYPE_MAIN = new Guid("C82CA04F-5319-4611-A6EE-64038BA89D71");
 
         private Guid SERVICE_GROUP_TYPE_EXTRA = new Guid("DC1B5435-6AA1-4CCD-B950-1C4ADAB1F8AD");
@@ -399,6 +403,8 @@ namespace AnseremPackage
         
         private string mailto { get; set; }
 
+        private string theme { get; set; }
+
         private bool isResponseSuccessful { get; set; }
         
         private Guid firstLineSupport { get; set; }
@@ -441,9 +447,9 @@ namespace AnseremPackage
         
         private Guid ServiceGroupForOrder { get; set; }
  
-        private bool ProcessSchemaParamCompanyFoundId { get; set; }
+        private Guid ProcessSchemaParamCompanyFoundId { get; set; }
 
-        private bool ProcessSchemaParamHoldingFoundId { get; set; }
+        private Guid ProcessSchemaParamHoldingFoundId { get; set; }
 
         private CompositeObjectList<CompositeObject> ServicesToAdd { get; set;}
         
@@ -459,6 +465,8 @@ namespace AnseremPackage
  
             isOlpFirstStage = GetOlpFirstStage();
             LoadingCheck = GetLoadingCheck();
+
+            _userConnection = UserConnection;
 
             _log.Info("START");
             _log.Info("CaseId: " + caseId);
@@ -494,7 +502,9 @@ namespace AnseremPackage
 
             copies = activity.GetTypedColumnValue<string>("CopyRecepient"); 
             
-            _log.Info("email: " + email + "; mailto: " + emailto + "; copies: " + copies);
+            theme = activity.GetTypedColumnValue<string>("Theme"); 
+
+            _log.Info("email: " + email + "; mailto: " + mailto + "; copies: " + copies);
 
             /**
              * Чтение всех основных групп для выделения подходящей основной группы
@@ -612,7 +622,7 @@ namespace AnseremPackage
             isResponseSuccessful = SendEisRequest();
             _log.Info("isResponseSuccessful: " + isResponseSuccessful);
             // Да
-            if (isResponseSuccessful || (isResponseSuccessful && contact.aeroclubCheck))
+            if (isResponseSuccessful || (isResponseSuccessful && contact.GetTypedColumnValue<bool>("aeroclubCheck")))
             {
                 _log.Info("EISpath: Yes");
 
@@ -629,7 +639,7 @@ namespace AnseremPackage
             }
 
             // Нет по домену и нет по ЕИС и (пустой тип или СПАМ)
-            if (isResponseSuccessful && contact.account == Guid.Empty && (contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
+            if (isResponseSuccessful && contact.GetTypedColumnValue<Guid>("Account") == Guid.Empty && (contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
                 _log.Info("EISpath: Not by domain, not by eis and empty or spam");
 
@@ -677,7 +687,7 @@ namespace AnseremPackage
             // Выставить холдинг компании контакта
             holding = GetHoldingFromAccountBindedToEis();            
             
-            ProcessSchemaParamHoldingFoundId = (holding != Guid.Empty);
+            ProcessSchemaParamHoldingFoundId = holding;
 
             // Чтение карточки контакта после обновления
             ReadContactAfterRefreshing();
@@ -698,7 +708,7 @@ namespace AnseremPackage
 
             clientCompanyId = contact.GetTypedColumnValue<Guid>("Account");
 
-            ProcessSchemaParamCompanyFoundId = (clientCompanyId != Guid.Empty);
+            ProcessSchemaParamCompanyFoundId = clientCompanyId;
             
             AddAccountToEmail();
 
@@ -761,7 +771,7 @@ namespace AnseremPackage
                     {
                         goto5();
                     }
-                    else if (selectedServiceGroupId && !extraServiceGroup)
+                    else if (selectedServiceGroupId != Guid.Empty && extraServiceGroup == Guid.Empty)
                     {
                         goto6();
                     }
@@ -770,11 +780,11 @@ namespace AnseremPackage
                         // Найти ГО дежурную по графику работы
                         GetExtraServiceGroupBaseOnTimetable();
                         
-                        if (selectedServiceGroupId && (!extraServiceGroup || contact.GetTypedColumnValue<string>("Email").contains("NOREPLY@") || contact.GetTypedColumnValue<string>("Email").contains("NO-REPLY@") || contact.GetTypedColumnValue<string>("Email").contains("EDM@npk.team")))
+                        if (selectedServiceGroupId && (!extraServiceGroup || contact.GetTypedColumnValue<string>("Email").Contains("NOREPLY@") || contact.GetTypedColumnValue<string>("Email").Contains("NO-REPLY@") || contact.GetTypedColumnValue<string>("Email").Contains("EDM@npk.team")))
                         {
                             goto6();
                         }
-                        else if (selectedServiceGroupId == Guid.Empty && (!contact.GetTypedColumnValue<string>("Email").contains("NOREPLY@") && !contact.GetTypedColumnValue<string>("Email").contains("NO-REPLY@") && !contact.GetTypedColumnValue<string>("Email").contains("EDM@npk.team")))
+                        else if (selectedServiceGroupId == Guid.Empty && (!contact.GetTypedColumnValue<string>("Email").Contains("NOREPLY@") && !contact.GetTypedColumnValue<string>("Email").Contains("NO-REPLY@") && !contact.GetTypedColumnValue<string>("Email").Contains("EDM@npk.team")))
                         {
                             SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                             SetAutonotification();
@@ -831,7 +841,7 @@ namespace AnseremPackage
             GetExtraServiceGroupFromFromAndCopyBaseOnTimetable();
             
             // дежурная ГО найдена или есть основная почта
-            if (selectedServiceGroupId)
+            if (selectedServiceGroupId != Guid.Empty)
             {
                 goto6();
             }
@@ -891,12 +901,12 @@ namespace AnseremPackage
                 _log.Info("importancy : " + importancy);
             }
 
-            if (firstLineSupport)
+            if (firstLineSupport != Guid.Empty)
             {
                 SetSecondLineSupport();
                 goto7();
             }
-            if (!firstLineSupport && isOlpFirstStage)
+            if (firstLineSupport == Guid.Empty && isOlpFirstStage)
             {
                 selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
                 _log.Info("selectedServiceGroupId: " + selectedServiceGroupId);
@@ -919,13 +929,13 @@ namespace AnseremPackage
                 return;
             }
        
-            if (eis.orderNumbCheck != Guid.Empty) 
+            if (new Guid(eis.OrderNumbCheck) != Guid.Empty) 
             {
                 // Собрать услуги для добавления
                 CollectServicesForInsertion();
 
                 // Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
-                IProcessEngine processEngine = UserConnection.ProcessEngine;
+                IProcessEngine processEngine = _userConnection.ProcessEngine;
                 IProcessExecutor processExecutor = processEngine.ProcessExecutor;
 
                 try
@@ -955,11 +965,11 @@ namespace AnseremPackage
                         SELECT id FROM SysSettings WHERE Code LIKE 'OLPIsFirstStepToPROD'
                         )";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
 
-            using (var db = UserConnection.EnsureDBConnection())
+            using (var db = _userConnection.EnsureDBConnection())
             {
-                using (var reader = sql.ExecureReader(db))
+                using (var reader = query.ExecureReader(db))
                 {
                     if (reader.Read())
                     {
@@ -967,13 +977,14 @@ namespace AnseremPackage
                     }
                 }
             }
+            return false;
         }
 
         private Contact ReadContactFromCase(Guid contactId)
         {
             _log.Info("ReadContactFromCase");
 
-            var contact = new Contact(UserConnection);
+            var contact = new Contact(_userConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Contact.Id), contactId}, 
             };
@@ -1001,7 +1012,7 @@ namespace AnseremPackage
                                          WHERE 
                                          Id = '{caseId}'";
 
-                CustomQuery query = new CustomQuery(UserConnection, sql);
+                CustomQuery query = new CustomQuery(_userConnection, sql);
                 query.Execute();
             }
             catch (Exception e)
@@ -1014,7 +1025,7 @@ namespace AnseremPackage
         {
  
             _log.Info("GetParentActivityFromCase");
-            var activity = new Activity(UserConnection);
+            var activity = new Activity(_userConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Activity.Id), contactId },
                 { nameof(Activity.TypeId), ACTIVITY_TYPE_EMAIL } 
@@ -1039,9 +1050,9 @@ namespace AnseremPackage
                     OlpSgEmail IS NOT NULL AND
                     OlpTypeGroupService = '{SERVICE_GROUP_TYPE_EXTRA}'";
 
-                CustomQuery query = new CustomQuery(UserConnection, sql);
+                CustomQuery query = new CustomQuery(_userConnection, sql);
 
-                using (var db = UserConnection.EnsureDBConnection())
+                using (var db = _userConnection.EnsureDBConnection())
                 {
                     using (var reader = sql.ExecureReader(db))
                     {
@@ -1054,12 +1065,12 @@ namespace AnseremPackage
                             string EmailBoxName = "";
                             string EmailBoxALias = "";
 
-                            var ExtraGroupId = reader.GetColumnValue<string>("ExtraGroupId");
+                            var ExtraGroupId = reader.GetColumnValue<Guid>("ExtraGroupId");
 
-                            var ExtraEmailBox = reader.GetColumnValue<string>("ExtraGroupEmailBoxId");
+                            var ExtraEmailBox = reader.GetColumnValue<Guid>("ExtraGroupEmailBoxId");
 
                             //ищем текстовое значение ящика по ГО
-                            EntitySchemaQuery ExtraEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
+                            EntitySchemaQuery ExtraEmailBoxString = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
                             ExtraEmailBoxString.PrimaryQueryColumn.IsAlwaysSelect = true;
                             ExtraEmailBoxString.ChunkSize = 1;
                             ExtraEmailBoxString.Filters.Add(ExtraEmailBoxString.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ExtraGroupEmailBoxId));
@@ -1067,7 +1078,7 @@ namespace AnseremPackage
                             ExtraEmailBoxString.AddColumn("AliasAddress");
 
                             var MailboxSyncSettings = ExtraEmailBoxString.AddColumn("MailboxSyncSettings.Id"); //Ид. ящика из настройки почтовых ящиков
-                            EntityCollection CollectionEmailText = ExtraEmailBoxString.GetEntityCollection(UserConnection);
+                            EntityCollection CollectionEmailText = ExtraEmailBoxString.GetEntityCollection(_userConnection);
                             //Найден ящик для регистрации обращений
                             if (CollectionEmailText.IsNotEmpty())
                             {
@@ -1103,12 +1114,12 @@ namespace AnseremPackage
                             if (ExtraGroupIdTemp != Guid.Empty)
                             {
 
-                                EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                                EntitySchemaQuery esq = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                                 esq.PrimaryQueryColumn.IsAlwaysSelect = true;
                                 esq.ChunkSize = 1;
                                 var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
                                 esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ExtraGroupIdTemp));
-                                EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+                                EntityCollection entityCollection = esq.GetEntityCollection(_userConnection);
                                 //Идем в цикл если коллекция не пустая
                                 if (entityCollection.IsNotEmpty()) 
                                 {
@@ -1144,11 +1155,11 @@ namespace AnseremPackage
                     OlpSgEmail IS NOT NULL AND
                     OlpTypeGroupService = '{SERVICE_GROUP_TYPE_MAIN}'"; 
 
-                    CustomQuery query = new CustomQuery(UserConnection, sql);
+                CustomQuery query = new CustomQuery(_userConnection, sql);
 
-                using (var db = UserConnection.EnsureDBConnection())
+                using (var db = _userConnection.EnsureDBConnection())
                 {
-                    using (var reader = sql.ExecureReader(db))
+                    using (var reader = query.ExecureReader(db))
                     {
                         Guid MainGroupIdTemp = Guid.Empty;
 
@@ -1166,7 +1177,7 @@ namespace AnseremPackage
                             Guid MainGroupEmailBoxId = reader.GetColumnValue<Guid>("MainGroupEmailBoxId");
 
                             //ищем текстовое значение ящика по ГО
-                            EntitySchemaQuery EsqEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
+                            EntitySchemaQuery EsqEmailBoxString = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
                             EsqEmailBoxString.PrimaryQueryColumn.IsAlwaysSelect = true;
                             EsqEmailBoxString.ChunkSize = 1;
                             EsqEmailBoxString.Filters.Add(EsqEmailBoxString.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", MainGroupEmailBoxId));
@@ -1175,7 +1186,7 @@ namespace AnseremPackage
 
                             var MailboxSyncSettings= EsqEmailBoxString.AddColumn("MailboxSyncSettings.Id"); //Ид. ящика из настройки почтовых ящиков
 
-                            EntityCollection CollectionEmailText = EsqEmailBoxString.GetEntityCollection(UserConnection);
+                            EntityCollection CollectionEmailText = EsqEmailBoxString.GetEntityCollection(_userConnection);
 
                             //Найден ящик для регистрации обращений
                             if (CollectionEmailText.IsNotEmpty()){
@@ -1215,14 +1226,14 @@ namespace AnseremPackage
 
                             if (MainGroupIdTemp != Guid.Empty)
                             {
-                                EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                                EntitySchemaQuery esq = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                                 esq.PrimaryQueryColumn.IsAlwaysSelect = true;
                                 esq.ChunkSize = 1;
                                 var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
 
                                 esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", MainGroupIdTemp));
 
-                                EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+                                EntityCollection entityCollection = esq.GetEntityCollection(_userConnection);
 
                                 //Идем в цикл если коллекция не пустая
                                 if (entityCollection.IsNotEmpty()) 
@@ -1230,15 +1241,14 @@ namespace AnseremPackage
                                     foreach (var groupsshedule in entityCollection) 
                                     {
                                         MainSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
-                                        return;
+                                        break;
                                     }
                                 }
-                                return;
                             }
                         }
                     }
                 }
-                return;
+                return MainGroupId; // TODO
             }
             catch (Exception e)
             {
@@ -1260,9 +1270,9 @@ namespace AnseremPackage
             
                 _log.Info("title: " + title + "; body: " + body);
                 
+                var themetravel = "";
                 if (!string.IsNullOrEmpty(title))
                 {
-                    var themetravel = "";
                     if (!string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("TRAVEL-"))
                     {
 
@@ -1314,10 +1324,10 @@ namespace AnseremPackage
                     WHERE 
                         statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
-                CustomQuery query1 = new CustomQuery(UserConnection, sql1);
+                CustomQuery query1 = new CustomQuery(_userConnection, sql1);
                 query1.Execute();
 
-                CustomQuery query2 = new CustomQuery(UserConnection, sql2);
+                CustomQuery query2 = new CustomQuery(_userConnection, sql2);
                 query2.Execute();
             }
             catch (Exception e)
@@ -1372,8 +1382,8 @@ namespace AnseremPackage
                     WHERE 
                         statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
-                CustomQuery query1 = new CustomQuery(UserConnection, sql1);
-                CustomQuery query2 = new CustomQuery(UserConnection, sql2);
+                CustomQuery query1 = new CustomQuery(_userConnection, sql1);
+                CustomQuery query2 = new CustomQuery(_userConnection, sql2);
                 query1.Execute();
                 query2.Execute();
             }
@@ -1403,9 +1413,9 @@ namespace AnseremPackage
                  Number = '{email}' 
                 )";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
 
-            using (var db = UserConnection.EnsureDBConnection())
+            using (var db = _userConnection.EnsureDBConnection())
             {
                 using (var reader = sql.ExecureReader(db))
                 {
@@ -1422,7 +1432,7 @@ namespace AnseremPackage
         {
             _log.Info("FetchAccountById");
 
-            var account = new account(UserConnection);
+            var account = new Account(_userConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Account.Id), accountId },
             };
@@ -1436,15 +1446,14 @@ namespace AnseremPackage
         private Account FetchAccountByEis(Guid accountId)
         {
             _log.Info("FetchAccountByEis");
-            var account = new account(UserConnection);
+            var account = new Account(_userConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Account.OlpCode), accountId },
             };
 
             if (account.FetchFromDB(conditions))
-            {
                 return account;
-            }
+            return null;
         }
 
         private void SetContactType(Guid contactId, Guid type)
@@ -1460,7 +1469,7 @@ namespace AnseremPackage
                     Account = '{companyId}'
                 WHERE id = '{contactId}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
@@ -1477,7 +1486,7 @@ namespace AnseremPackage
                 WHERE
                     Id = '{contactId}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
@@ -1506,7 +1515,7 @@ namespace AnseremPackage
                 WHERE 
                     Id = '{contactId}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
@@ -1525,7 +1534,7 @@ namespace AnseremPackage
                 WHERE 
                     Id = '{contactId}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
@@ -1543,7 +1552,7 @@ namespace AnseremPackage
                 WHERE 
                     Id = '{contactId}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
@@ -1558,9 +1567,9 @@ namespace AnseremPackage
                 INNER JOIN Account a ON a.Id = c.AccountId
                 WHERE c.Id = '{contactid}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
 
-            using (var db = UserConnection.EnsureDBConnection())
+            using (var db = _userConnection.EnsureDBConnection())
             {
                 using (var reader = sql.ExecureReader(db))
                 {
@@ -1575,7 +1584,7 @@ namespace AnseremPackage
         private void GetContactAfterRefreshing(Guid contactId)
         {
             _log.Info("GetContactAfterRefreshing");
-            var updatedContact = new Contact(UserConnection);
+            var updatedContact = new Contact(_userConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Contact.Id), contactId}, 
             };
@@ -1597,14 +1606,14 @@ namespace AnseremPackage
                 WHERE 
                     Id = '{parentActivityId}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
         private OlpServiceGroup GetServiceGroupBySelectedId()
         {
             _log.Info("GetServiceGroupBySelectedId");
-            var serviceGroup = new account(UserConnection);
+            var serviceGroup = new account(_userConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Account.Id), selectedServiceGroupId},
             };
@@ -1631,7 +1640,7 @@ namespace AnseremPackage
             //Считать ВИП Платформа
             bool isvipplatform = clientVipPlatform;
 
-            EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery esq = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             esq.PrimaryQueryColumn.IsAlwaysSelect = true;	
 
             esq.AddColumn("[OlpGroupServiceAccount:OlpServiceGroupDetail:Id].OlpAccount"); //Ид.компании-холдинга из детали
@@ -1660,7 +1669,7 @@ namespace AnseremPackage
             }  
 
             var list = new CompositeObjectList<CompositeObject>();
-            EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+            EntityCollection entityCollection = esq.GetEntityCollection(_userConnection);
 
             //Идем в цикл если коллекция не пустая
             if (entityCollection.IsNotEmpty()) 
@@ -1699,7 +1708,7 @@ namespace AnseremPackage
 
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
             var servicegrouplist = ProcessSchemaParameterServiceGroupCollection;
-            var ServiceGroupIdTemp = System.Guid.Empty;
+            var ServiceGroupIdTemp = Guid.Empty;
 
             foreach (var item in servicegrouplist)
             {
@@ -1713,7 +1722,7 @@ namespace AnseremPackage
                 }
 
                 //Приоритетная проверка по Праздничным-выходным дням
-                EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 EsqHoliday.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqHoliday.ChunkSize = 1;
                 EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
@@ -1723,7 +1732,7 @@ namespace AnseremPackage
                 EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Выходной"));
 
 
-                EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(UserConnection);
+                EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(_userConnection);
                 //Есть выходной-праздничный день перейти к следующей ГО
                 if (CollectionHoliday.IsNotEmpty())
                 {
@@ -1731,7 +1740,7 @@ namespace AnseremPackage
                 }
 
                 //Приоритетная проверка по Праздничным-рабочим дням
-                EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 EsqHolidayWork.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqHolidayWork.ChunkSize = 1;
                 // Найти График в праздничные дни
@@ -1740,7 +1749,7 @@ namespace AnseremPackage
                 EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
                 EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-                EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(UserConnection);
+                EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(_userConnection);
                 
                 //Есть рабочий-праздничный день записать ГО и выйти из цикла
                 if (CollectionHolidayWork.IsNotEmpty())
@@ -1757,7 +1766,7 @@ namespace AnseremPackage
                 }
 
                 //Приоритетная проверка по Праздничным-рабочим дням - есть ли они на текущую дату?
-                EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 EsqHolidayWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqHolidayWorkDate.ChunkSize = 1;
                 EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow.AddHours(3).Date));
@@ -1765,7 +1774,7 @@ namespace AnseremPackage
                 EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
                 EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-                EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(UserConnection);
+                EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(_userConnection);
                 //Есть рабочий-праздничный день записать ГО и выйти из цикла
                 if (CollectionHolidayWorkDate.IsNotEmpty())
                 {
@@ -1773,7 +1782,7 @@ namespace AnseremPackage
                 }
 
                 //можно смотреть по стандартному графику
-                EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 EsqStandartWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqStandartWorkDate.ChunkSize = 2;
 
@@ -1789,7 +1798,7 @@ namespace AnseremPackage
                 orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.AddDays(-1).DayOfWeek.ToString())); // день недели день недели -1
                 EsqStandartWorkDate.Filters.Add(orFilterGroup);
 
-                EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(UserConnection);
+                EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(_userConnection);
 
                 if (CollectionStandartWorkDate.IsNotEmpty()) 
                 {
@@ -1862,7 +1871,7 @@ namespace AnseremPackage
                 }
 
                 //Приоритетная проверка по Праздничным-выходным дням
-                EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 EsqHoliday.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqHoliday.ChunkSize = 1;
                 EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
@@ -1872,7 +1881,7 @@ namespace AnseremPackage
                 EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Выходной"));
 
 
-                EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(UserConnection);
+                EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(_userConnection);
                 //Есть выходной-праздничный день перейти к следующей ГО
                 if (CollectionHoliday.IsNotEmpty())
                 {
@@ -1880,7 +1889,7 @@ namespace AnseremPackage
                 }
 
                 //Приоритетная проверка по Праздничным-рабочим дням
-                EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 EsqHolidayWork.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqHolidayWork.ChunkSize = 1;
                 // Найти График в праздничные дни
@@ -1889,7 +1898,7 @@ namespace AnseremPackage
                 EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
                 EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-                EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(UserConnection);
+                EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(_userConnection);
                 //Есть рабочий-праздничный день записать ГО и выйти из цикла
                 if (CollectionHolidayWork.IsNotEmpty())
                 {
@@ -1905,7 +1914,7 @@ namespace AnseremPackage
                 }
 
                 //Приоритетная проверка по Праздничным-рабочим дням - есть ли они на текущую дату?
-                EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 EsqHolidayWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqHolidayWorkDate.ChunkSize = 1;
                 EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow.Date));
@@ -1913,7 +1922,7 @@ namespace AnseremPackage
                 EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
                 EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-                EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(UserConnection);
+                EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(_userConnection);
                 //Есть рабочий-праздничный день записать ГО и выйти из цикла
                 if (CollectionHolidayWorkDate.IsNotEmpty())
                 {
@@ -1921,7 +1930,7 @@ namespace AnseremPackage
                 }
 
                 //можно смотреть по стандартному графику
-                EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 EsqStandartWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqStandartWorkDate.ChunkSize = 2;
 
@@ -1937,7 +1946,7 @@ namespace AnseremPackage
                 orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.AddDays(-1).DayOfWeek.ToString())); // день недели день недели -1
                 EsqStandartWorkDate.Filters.Add(orFilterGroup);
 
-                EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(UserConnection);
+                EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(_userConnection);
 
                 if (CollectionStandartWorkDate.IsNotEmpty()) 
                 {
@@ -1993,7 +2002,7 @@ namespace AnseremPackage
             Guid ServiceGroupIdTemp = System.Guid.Empty;
 
             //можно смотреть по стандартному графику
-            EntitySchemaQuery EsqStdWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqStdWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqStdWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqStdWorkDate.ChunkSize = 1;
 
@@ -2004,7 +2013,7 @@ namespace AnseremPackage
             EsqStdWorkDate.Filters.Add(EsqStdWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", "Monday"));
             EsqStdWorkDate.Filters.Add(EsqStdWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-            EntityCollection CollectionStdWorkDate = EsqStdWorkDate.GetEntityCollection(UserConnection);
+            EntityCollection CollectionStdWorkDate = EsqStdWorkDate.GetEntityCollection(_userConnection);
 
             if (CollectionStdWorkDate.IsNotEmpty())
             {
@@ -2042,11 +2051,11 @@ namespace AnseremPackage
                 ServiceGroupIdTemp = ServiceGroupId;
                 ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
                 ProcessSchemaParameterIsDutyGroup = false;
-                return true;
+                return;
             }
 
             //Приоритетная проверка по Праздничным-выходным дням
-            EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHoliday.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHoliday.ChunkSize = 1;
             EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
@@ -2055,16 +2064,18 @@ namespace AnseremPackage
             EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeTo", DateTime.UtcNow));
             EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Выходной"));
 
-            EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(_userConnection);
             //Есть выходной-праздничный день перейти к следующей ГО
-            if (CollectionHoliday.IsNotEmpty()){
+            if (CollectionHoliday.IsNotEmpty())
+            {
                 ProcessSchemaParamServiceGroupId = ServiceGroupId;
                 ProcessSchemaParameterIsDutyGroup = true;
                 ServiceGroupForOrder = ServiceGroupId;
-                return true;}
+                return ;
+            }
 
             //Приоритетная проверка по Праздничным-рабочим дням
-            EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHolidayWork.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHolidayWork.ChunkSize = 1;
             // Найти График в праздничные дни
@@ -2073,7 +2084,7 @@ namespace AnseremPackage
             EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
             EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-            EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(_userConnection);
             //Есть рабочий-праздничный день записать ГО и выйти из цикла
             if (CollectionHolidayWork.IsNotEmpty())
             {
@@ -2086,12 +2097,12 @@ namespace AnseremPackage
                 {
                     ProcessSchemaParamServiceGroupId =  ServiceGroupIdTemp;
                     ProcessSchemaParameterIsDutyGroup  = false;
-                    return true;
+                    return;
                 }
             }
 
             //Приоритетная проверка по Праздничным-рабочим дням - есть ли они на текущую дату?
-            EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHolidayWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHolidayWorkDate.ChunkSize = 1;
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow.Date));
@@ -2099,7 +2110,7 @@ namespace AnseremPackage
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-            EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(_userConnection);
             //Есть рабочий-праздничный день записать ГО и выйти из цикла
             if (CollectionHolidayWorkDate.IsNotEmpty())
             {
@@ -2110,7 +2121,7 @@ namespace AnseremPackage
             }
 
             //можно смотреть по стандартному графику
-            EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqStandartWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqStandartWorkDate.ChunkSize = 2;
 
@@ -2126,7 +2137,7 @@ namespace AnseremPackage
             orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.AddDays(-1).DayOfWeek.ToString())); // день недели день недели -1
             EsqStandartWorkDate.Filters.Add(orFilterGroup);
 
-            EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(UserConnection);
+            EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(_userConnection);
 
             if (CollectionStandartWorkDate.IsNotEmpty()) 
             {
@@ -2194,7 +2205,7 @@ namespace AnseremPackage
             }
 
             //Приоритетная проверка по Праздничным-выходным дням
-            EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHoliday.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHoliday.ChunkSize = 1;
             EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
@@ -2204,7 +2215,7 @@ namespace AnseremPackage
             EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Выходной"));
 
 
-            EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(_userConnection);
             //Есть выходной-праздничный день перейти к следующей ГО
             if (CollectionHoliday.IsNotEmpty())
             {
@@ -2213,7 +2224,7 @@ namespace AnseremPackage
             }
 
             //Приоритетная проверка по Праздничным-рабочим дням
-            EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHolidayWork.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHolidayWork.ChunkSize = 1;
             // Найти График в праздничные дни
@@ -2222,7 +2233,7 @@ namespace AnseremPackage
             EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
             EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-            EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(_userConnection);
             //Есть рабочий-праздничный день записать ГО и выйти из цикла
             if (CollectionHolidayWork.IsNotEmpty())
             {
@@ -2239,7 +2250,7 @@ namespace AnseremPackage
             }
 
             //Приоритетная проверка по Праздничным-рабочим дням - есть ли они на текущую дату?
-            EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHolidayWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHolidayWorkDate.ChunkSize = 1;
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow.Date));
@@ -2247,7 +2258,7 @@ namespace AnseremPackage
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-            EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(_userConnection);
             //Есть рабочий-праздничный день записать ГО и выйти из цикла
             if (CollectionHolidayWorkDate.IsNotEmpty())
             {
@@ -2256,7 +2267,7 @@ namespace AnseremPackage
             }
 
             //можно смотреть по стандартному графику
-            EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqStandartWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqStandartWorkDate.ChunkSize = 2;
 
@@ -2272,7 +2283,7 @@ namespace AnseremPackage
             orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.AddDays(-1).DayOfWeek.ToString())); // день недели день недели -1
             EsqStandartWorkDate.Filters.Add(orFilterGroup);
 
-            EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(UserConnection);
+            EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(_userConnection);
 
             if (CollectionStandartWorkDate.IsNotEmpty())
             {
@@ -2330,12 +2341,12 @@ namespace AnseremPackage
 
             if (ServiceGroupId != Guid.Empty)
             {
-                EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+                EntitySchemaQuery esq = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
                 esq.PrimaryQueryColumn.IsAlwaysSelect = true;
                 esq.ChunkSize = 1;
                 var OlpTypeScheduleWorks = esq.AddColumn("OlpTypeScheduleWorks.Name");
                 esq.Filters.Add(esq.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
-                EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+                EntityCollection entityCollection = esq.GetEntityCollection(_userConnection);
                 //Идем в цикл если коллекция не пустая
                 if (entityCollection.IsNotEmpty()) 
                 {
@@ -2358,7 +2369,7 @@ namespace AnseremPackage
             }
 
             //Приоритетная проверка по Праздничным-выходным дням
-            EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHoliday.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHoliday.ChunkSize = 1;
             EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
@@ -2368,16 +2379,16 @@ namespace AnseremPackage
             EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Выходной"));
 
 
-            EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(_userConnection);
             //Есть выходной-праздничный день перейти к следующей ГО
             if (CollectionHoliday.IsNotEmpty())
             {
                 ProcessSchemaParameterIsDutyGroup = true;
-                return true;
+                return;
             }
 
             //Приоритетная проверка по Праздничным-рабочим дням
-            EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHolidayWork.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHolidayWork.ChunkSize = 1;
             // Найти График в праздничные дни
@@ -2386,7 +2397,7 @@ namespace AnseremPackage
             EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
             EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-            EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(_userConnection);
             //Есть рабочий-праздничный день записать ГО и выйти из цикла
             if (CollectionHolidayWork.IsNotEmpty())
             {
@@ -2399,12 +2410,12 @@ namespace AnseremPackage
                 {
                     ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
                     ProcessSchemaParameterIsDutyGroup = false;
-                    return true;
+                    return;
                 }
             }
 
             //Приоритетная проверка по Праздничным-рабочим дням - есть ли они на текущую дату?
-            EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqHolidayWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqHolidayWorkDate.ChunkSize = 1;
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow.Date));
@@ -2412,16 +2423,16 @@ namespace AnseremPackage
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
             EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-            EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(UserConnection);
+            EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(_userConnection);
             //Есть рабочий-праздничный день записать ГО и выйти из цикла
             if (CollectionHolidayWorkDate.IsNotEmpty())
             {
                 ProcessSchemaParameterIsDutyGroup = true;
-                return true;
+                return;
             }
 
             //можно смотреть по стандартному графику
-            EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             EsqStandartWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
             EsqStandartWorkDate.ChunkSize = 2;
 
@@ -2437,7 +2448,7 @@ namespace AnseremPackage
             orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.AddDays(-1).DayOfWeek.ToString())); // день недели день недели -1
             EsqStandartWorkDate.Filters.Add(orFilterGroup);
 
-            EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(UserConnection);
+            EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(_userConnection);
 
             if (CollectionStandartWorkDate.IsNotEmpty()) 
             {
@@ -2478,7 +2489,7 @@ namespace AnseremPackage
                 ProcessSchemaParameterIsDutyGroup = true;
             }
 
-            return true;
+            return;
         }
 
         private void SetFirstLineSupport()
@@ -2495,11 +2506,11 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}' 
+                    OlpServiceGroupForOrder = '{ServiceGroupForOrder}' 
                 WHERE 
                     Id = '{caseId}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
 
         }
@@ -2518,11 +2529,11 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}' 
+                    OlpServiceGroupForOrder = '{ServiceGroupForOrder}' 
                 WHERE
                     Id = '{caseId}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
@@ -2541,10 +2552,10 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', 
+                    OlpServiceGroupForOrder = '{ServiceGroupForOrder}', 
                 WHERE 
                     Id = '{caseId}'";
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
  
         }
@@ -2572,7 +2583,7 @@ namespace AnseremPackage
                     IsAutoSubmitted = '{true}',
                 WHERE 
                     id = '{parentActivityId}'";
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
@@ -2596,20 +2607,20 @@ namespace AnseremPackage
 
 
                 // Существует email?
-                EntitySchemaQuery EsqContact = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "ContactCommunication");
+                EntitySchemaQuery EsqContact = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "ContactCommunication");
                 EsqContact.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqContact.ChunkSize = 1;
                 EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "Contact", IdContact));
                 EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "Number", NameEmail));
                 EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "CommunicationType", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6")));
-                EntityCollection CollectionEmail = EsqContact.GetEntityCollection(UserConnection);
+                EntityCollection CollectionEmail = EsqContact.GetEntityCollection(_userConnection);
 
                 if (CollectionEmail.IsEmpty())
                 {
                     // continue;
                     // Добавление почты контакту
-                    var emailContact = UserConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
-                    var entityemailContact = emailContact.CreateEntity(UserConnection);
+                    var emailContact = _userConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
+                    var entityemailContact = emailContact.CreateEntity(_userConnection);
 
                     entityemailContact.UseAdminRights = false;
                     entityemailContact.SetDefColumnValues();
@@ -2622,13 +2633,13 @@ namespace AnseremPackage
             }
 
             // обновление/добавление телефона
-            var listPhone = eis.OlpPhones_Out;
+            var listPhone = eis.Phones;
             var IdContact1 = ContactIdForEmailAndPhone;
 
             foreach (var item1 in listPhone) 
             {
-                NamePhone = item1.OlpPNumber_Out;
-                Kind = item1.OlpPKind_Out;
+                var NamePhone = item1.Number;
+                var Kind = item1.Kide;
 
                 if (string.IsNullOrEmpty(NamePhone)) { continue; }	// если нет телефона то идти на следующий
 
@@ -2641,19 +2652,19 @@ namespace AnseremPackage
                 if (string.IsNullOrEmpty(Kind)) { typeIdPhone = Guid.Parse("21c0d693-9a52-43fa-b7f1-c6d8b53975d4"); }
 
                 // Существует телефон?
-                EntitySchemaQuery EsqContactPhone = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "ContactCommunication");
+                EntitySchemaQuery EsqContactPhone = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "ContactCommunication");
                 EsqContactPhone.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqContactPhone.ChunkSize = 1;
                 EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "Contact", IdContact1));
                 EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "Number", NamePhone));
                 EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "CommunicationType", typeIdPhone));
-                EntityCollection CollectionPhone = EsqContactPhone.GetEntityCollection(UserConnection);
+                EntityCollection CollectionPhone = EsqContactPhone.GetEntityCollection(_userConnection);
 
                 if (CollectionPhone.IsEmpty())
                 {
                     // Добавление почты контакту
-                    var phoneContact = UserConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
-                    var entityphoneContact = phoneContact.CreateEntity(UserConnection);
+                    var phoneContact = _userConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
+                    var entityphoneContact = phoneContact.CreateEntity(_userConnection);
 
                     entityphoneContact.UseAdminRights = false;
                     entityphoneContact.SetDefColumnValues();
@@ -2683,7 +2694,7 @@ namespace AnseremPackage
             //Считать ВИП Платформа
             bool isvipplatform = clientVipPlatform; 
 
-            EntitySchemaQuery esq = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServiceGroup");
+            EntitySchemaQuery esq = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
             esq.PrimaryQueryColumn.IsAlwaysSelect = true;
             esq.ChunkSize = 1;
             //esq.AddColumn("OlpSgEmail.Name"); //Почтовый ящик string
@@ -2706,7 +2717,7 @@ namespace AnseremPackage
                 esq.Filters.Add(orFilterGroup);
             }  
 
-            EntityCollection entityCollection = esq.GetEntityCollection(UserConnection);
+            EntityCollection entityCollection = esq.GetEntityCollection(_userConnection);
 
             //Идем в цикл если коллекция не пустая
             if (entityCollection.IsNotEmpty()) 
@@ -2727,11 +2738,11 @@ namespace AnseremPackage
             /**LEGACY**/
         }
 
-        private void GetLoadingCheck()
+        private bool GetLoadingCheck()
         {
             _log.Info("GetLoadingCheck");
 
-            sql = $@"
+            string sql = $@"
                 SELECT 
                     BooleanValue 
                 FROM 
@@ -2741,11 +2752,11 @@ namespace AnseremPackage
                         SELECT id FROM SysSettings WHERE Code LIKE 'OLPLoadingCheck'
                         )";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
 
-            using (var db = UserConnection.EnsureDBConnection())
+            using (var db = _userConnection.EnsureDBConnection())
             {
-                using (var reader = sql.ExecureReader(db))
+                using (var reader = query.ExecureReader(db))
                 {
                     if (reader.Read())
                     {
@@ -2753,6 +2764,7 @@ namespace AnseremPackage
                     }
                 }
             }
+            return false;
         }
 
         private void CollectServicesForInsertion()
@@ -2779,14 +2791,14 @@ namespace AnseremPackage
                 }
 
                 //Проверка существует ли услуга в системе
-                EntitySchemaQuery EsqServise = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "OlpServices");
+                EntitySchemaQuery EsqServise = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServices");
                 EsqServise.PrimaryQueryColumn.IsAlwaysSelect = true;
                 EsqServise.ChunkSize = 1;
                 EsqServise.Filters.Add(EsqServise.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpExternalOrderNumber", OrderNumber));
                 EsqServise.Filters.Add(EsqServise.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpExternalServiceId", ServiceNumber));
                 EsqServise.Filters.Add(EsqServise.CreateFilterWithParameters(FilterComparisonType.Equal, "OlpExternalTripId", TripNumber));
 
-                EntityCollection CollectionEsqServise = EsqServise.GetEntityCollection(UserConnection);
+                EntityCollection CollectionEsqServise = EsqServise.GetEntityCollection(_userConnection);
 
                 if (CollectionEsqServise.IsNotEmpty() && nagruzka == true && nagruzkacount <= 5)
                 {
@@ -2846,11 +2858,11 @@ namespace AnseremPackage
                 AND
                     suir.SysRole = '{OLP_OR_FIRST_LINE_SUPPORT}'";
 
-            CustomQuery query = new CustomQuery(UserConnection, sql);
+            CustomQuery query = new CustomQuery(_userConnection, sql);
 
-            using (var db = UserConnection.EnsureDBConnection())
+            using (var db = _userConnection.EnsureDBConnection())
             {
-                using (var reader = sql.ExecureReader(db))
+                using (var reader = query.ExecureReader(db))
                 {
                     if (reader.Read())
                     {
@@ -2929,6 +2941,8 @@ namespace AnseremPackage
         public List<Phone> Phones { get; set; }
         
         public List<Service> Services { get; set; }
+        
+        public string OrderNumbCheck { get; set; }
     }
 
     public class Service
