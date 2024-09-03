@@ -286,8 +286,6 @@ namespace AnseremPackage
     { 
        
         private static readonly ILog _log = LogManager.GetLogger("EmailCaseProcessor");
-        
-        private StringBuilder logger = new StringBuilder();
 
         /**CONSTS**/
         private const Guid SERVICE_GROUP_TYPE_MAIN = new Guid("C82CA04F-5319-4611-A6EE-64038BA89D71");
@@ -457,20 +455,21 @@ namespace AnseremPackage
             var _case = (Entity)sender;
             caseId = _case.GetTypedColumnValue<Guid>("Id");
             
-            logger.Append("CaseId: " +  caseId);
+            _log.Info("START");
+            _log.Info("CaseId: " + caseId);
 
             // Чтение карточки контакта из обращения
             contact = ReadContactFromCase(_case.GetTypedColumnValue<Guid>("ContactId"));
             
             contactId = contact.GetTypedColumnValue<Guid>("contactId");
             
-            logger.Append("contactId: " +  contactId);
+            _log.Info("contactId: " +  contactId);
 
             // Нет (СПАМ) - 2 ЭТАП
             if (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM) 
             {
                 
-                logger.Append("Contact is spam");
+                _log.Info("Contact is spam");
 
                 // Спам на обращении + 1 линия поддержки
                 UpdateCaseToFirstLineSupport();
@@ -479,7 +478,7 @@ namespace AnseremPackage
 
             parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId");
             
-            logger.Append("parentActivityId: " + parentActivityId);
+            _log.Info("parentActivityId: " + parentActivityId);
 
             // email родительской активности
             activity = GetParentActivityFromCase();
@@ -490,7 +489,7 @@ namespace AnseremPackage
 
             copies = activity.GetTypedColumnValue<string>("CopyRecepient"); 
             
-            logger.Append("email: " + email + "; mailto: " + emailto + "; copies: " + copies);
+            _log.Info("email: " + email + "; mailto: " + emailto + "; copies: " + copies);
 
             /**
              * Чтение всех основных групп для выделения подходящей основной группы
@@ -504,8 +503,7 @@ namespace AnseremPackage
              */
             extraServiceGroup = GetServiceGroupExtra();
             
-            logger.Append("mainServiceGroup: " + mainServiceGroup + "; extraServiceGroup: " + extraServiceGroup);
-
+            _log.Info("mainServiceGroup: " + mainServiceGroup + "; extraServiceGroup: " + extraServiceGroup);
 
             /**
              * Добавить TRAVEL
@@ -523,7 +521,7 @@ namespace AnseremPackage
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty && !isOlpFirstStage && 
                     (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER))
             {
-                logger.Append("Employee, second stage");
+                _log.Info("Employee, second stage");
 
                 caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER; 
                 /**
@@ -537,7 +535,7 @@ namespace AnseremPackage
             // 1 Этап (Сотрудник/Поставщик)
             if (isOlpFirstStage && (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_EMPLOYEE || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_SUPPLIER))
             {
-                logger.Append("First stage, Employee or supplier");
+                _log.Info("First stage, Employee or supplier");
 
                 caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                 goto2();
@@ -546,26 +544,26 @@ namespace AnseremPackage
             // Нет (Новый)
             if (contact.GetTypedColumnValue<Guid>("Account") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty)
             {
-                logger.Append("Not, new");
+                _log.Info("Not, new");
 
                 account = FetchAccountById(GetAccountIdFromAccountCommunication());
 
                 // Да (Поставщик)
                 if (account != null && account.GetTypedColumnValue<Guid>("Type") == ACCOUNT_TYPE_SUPPLIER)
                 {
-                    logger.Append("Yes, supplier");
+                    _log.Info("Yes, supplier");
 
                     caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                     SetContactType(contact.GetTypedColumnValue<Guid>("Id"), CONTACT_TYPE_SUPPLIER);
                     if (isOlpFirstStage)
                     {
-                        logger.Append("OlpFirstStage");
+                        _log.Info("OlpFirstStage");
 
                         goto2();
                     }
                     else
                     {
-                        logger.Append("Not OlpFirstStage");
+                        _log.Info("Not OlpFirstStage");
                         UpdateCaseToFirstLineSupport();
                     }
                 }
@@ -573,7 +571,7 @@ namespace AnseremPackage
                 // Да (Аэроклуб)
                 if (account != Guid.Empty && account.GetTypedColumnValue<Guid>("Type") == ACCOUNT_TYPE_OUR_COMPANY)
                 {
-                    logger.Append("Yes, aerolcub");
+                    _log.Info("Yes, aerolcub");
 
                     caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
 
@@ -581,12 +579,12 @@ namespace AnseremPackage
                     
                     if (isOlpFirstStage)
                     {
-                        logger.Append("OlpFirstStage");
+                        _log.Info("OlpFirstStage");
                         goto2();
                     }
                     else
                     {
-                        logger.Append("Not OlpFirstStage");
+                        _log.Info("Not OlpFirstStage");
                         UpdateCaseToFirstLineSupport();
                     }
                 }
@@ -599,7 +597,7 @@ namespace AnseremPackage
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty && 
                     (contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_CLIENT || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
-                logger.Append("Yes, client or spam");
+                _log.Info("Yes, client or spam");
                 EisPath();
             }
         }
@@ -607,11 +605,11 @@ namespace AnseremPackage
         private void EisPath()
         {
             isResponseSuccessful = SendEisRequest();
-            logger.Append("isResponseSuccessful: " + isResponseSuccessful);
+            _log.Info("isResponseSuccessful: " + isResponseSuccessful);
             // Да
             if (isResponseSuccessful || (isResponseSuccessful && contact.aeroclubCheck))
             {
-                logger.Append("EISpath: Yes");
+                _log.Info("EISpath: Yes");
 
                 account = FetchAccountByEis(eis.Company);
 
@@ -628,19 +626,19 @@ namespace AnseremPackage
             // Нет по домену и нет по ЕИС и (пустой тип или СПАМ)
             if (isResponseSuccessful && contact.account == Guid.Empty && (contact.GetTypedColumnValue<Guid>("Type") == Guid.Empty || contact.GetTypedColumnValue<Guid>("Type") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM))
             {
-                logger.Append("EISpath: Not by domain, not by eis and empty or spam");
+                _log.Info("EISpath: Not by domain, not by eis and empty or spam");
 
                 // категория СПАМ
                 caseCategory = CONTACT_TYPE_UNDEFINED_CLIENT_SPAM;
                 if (isOlpFirstStage)
                 {
-                    logger.Append("OlpFirstStage");
+                    _log.Info("OlpFirstStage");
                     SetSpamOnCase();
                     goto2();
                 }
                 else
                 {
-                    logger.Append("Not OlpFirstStage");
+                    _log.Info("Not OlpFirstStage");
                     SetSpamOnCase();   
                     return;
                 }
@@ -650,7 +648,7 @@ namespace AnseremPackage
             // Да
             if (contact.GetTypedColumnValue<Guid>("Account") != Guid.Empty)
             {
-                logger.Append("Not by eis: Yes");
+                _log.Info("Not by eis: Yes");
 
                 // Актуализировать тип контакта + Email 
                 RefreshContactTypeAndEmail();
@@ -658,7 +656,7 @@ namespace AnseremPackage
             // Нет
             else
             {
-                logger.Append("Not by eis: Not");
+                _log.Info("Not by eis: Not");
                 // Актуализировать компанию контакта + Email
                 RefreshContactCompanyAndEmail();
             }
@@ -668,7 +666,7 @@ namespace AnseremPackage
 
         private void goto2()
         {
-            logger.Append("goto2");
+            _log.Info("goto2");
 
             // Найти данные компании привязанной к контакту ненайденного в ЕИС
             // Выставить холдинг компании контакта
@@ -685,7 +683,7 @@ namespace AnseremPackage
          */
         private void ReadContactAfterRefreshing()
         {
-            logger.Append("ReadContactAfterRefreshing");
+            _log.Info("ReadContactAfterRefreshing");
 
             GetContactAfterRefreshing(contact.GetTypedColumnValue<Guid>("Id"));
 
@@ -701,12 +699,12 @@ namespace AnseremPackage
             // Найти основную ГО для контакта по компаниям и ВИП Платформа
             GetMainServiceGroup();
 
-            logger.Append("Is service group found by company vip platform");
+            _log.Info("Is service group found by company vip platform");
             // Найдена ли группа по компании ВИП Платформа?
             // Да
             if (!isExtraServiceGroup && !isOlpFirstStage)
             {
-                logger.Append("Yes");
+                _log.Info("Yes");
 
                 // Найти ГО основную по графику работы 
                 GetMainServiceGroupBasedOnTimetable(); 
@@ -716,31 +714,31 @@ namespace AnseremPackage
             // Этап 1
             if (isOlpFirstStage)
             {
-                logger.Append("First stage");
+                _log.Info("First stage");
 
                 // Есть ГО
                 if (!isExtraServiceGroup)
                 {
-                    logger.Append("Service group is found");
+                    _log.Info("Service group is found");
 
                     // Найти ГО  основную по графику работы 1 этап
                     GetMainServiceGroupBasedOnTimetableOlpFirstStage(); 
                 }
 
                 // Какую ГО установить?
-                logger.Append("Which service group to set");
+                _log.Info("Which service group to set");
 
                 // Указана только дежурная в кому/копии
                 if (mainServiceGroup == Guid.Empty && extraServiceGroupFromAndCopy != Guid.Empty && isExtraServiceGroup) // Разобраться с параметрами
                 {
-                    logger.Append("Only duty group was in to/copy");
+                    _log.Info("Only duty group was in to/copy");
                     goto5();
                 }
 
                 // Найдена ГО по компании и графику клиента и почтовому адресу
                 else if (!extraServiceGroup)
                 {
-                    logger.Append("Service group was found by company and timetable and email addres");
+                    _log.Info("Service group was found by company and timetable and email addres");
                     SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                     SetAutonotification();
                     goto6();
@@ -749,7 +747,7 @@ namespace AnseremPackage
                 // Указана осн ГО в кому/копии
                 else if (mainServiceGroup == Guid.Empty && isExtraServiceGroup)
                 {
-                    logger.Append("Main service group in to/copy");
+                    _log.Info("Main service group in to/copy");
 
                     // Найти осн из почты по графику
                     GetMainServiceGroupFromMainBasedOnTimeTable(); 
@@ -793,11 +791,11 @@ namespace AnseremPackage
 
         private void goto4()
         {
-            logger.Append("goto4");
+            _log.Info("goto4");
             // Дежурная ГО 2 линия поддержки
             if (extraServiceGroup && isVipClient)
             {
-                logger.Append("Duty group second line of support");
+                _log.Info("Duty group second line of support");
                 selectedServiceGroupId = OLP_DUTY_SERVICE_GROUP;
                 goto5();
             }
@@ -805,14 +803,14 @@ namespace AnseremPackage
             // Основная клиентская/ВИП Платформа
             else if (!extraServiceGroup)
             {
-                logger.Append("Main clients/vip platform");
+                _log.Info("Main clients/vip platform");
                 goto5();
             }
 
             // Общая 1 линия поддержки
             else if (extraServiceGroup && isVipClient)
             {
-                logger.Append("General first line of support");
+                _log.Info("General first line of support");
                 selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
                 SetFirstLineSupport();
                 goto7();
@@ -821,7 +819,7 @@ namespace AnseremPackage
 
         private void goto5()
         {
-            logger.Append("goto5");
+            _log.Info("goto5");
 
             // Найти ГО дежурную из кому/копии по графику работы
             GetExtraServiceGroupFromFromAndCopyBaseOnTimetable();
@@ -846,7 +844,7 @@ namespace AnseremPackage
 
         private void goto6()
         {
-            logger.Append("goto6");
+            _log.Info("goto6");
 
             var serviceGroup = GetServiceGroupBySelectedId();
 
@@ -884,7 +882,7 @@ namespace AnseremPackage
             if (activity.GetTypedColumnValue<Guid>("Priority") == ACTIVITY_PRIORITY_HIGH)
             {
                 importancy = CASE_IMPORTANCY_IMPOTANT;
-                logger.Append("importancy : " + importancy);
+                _log.Info("importancy : " + importancy);
             }
 
             if (firstLineSupport)
@@ -895,7 +893,7 @@ namespace AnseremPackage
             if (!firstLineSupport && isOlpFirstStage)
             {
                 selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
-                logger.Append("selectedServiceGroupId: " + selectedServiceGroupId);
+                _log.Info("selectedServiceGroupId: " + selectedServiceGroupId);
                 SetFirstLineSupport();
                 goto7();
             }
@@ -906,12 +904,12 @@ namespace AnseremPackage
          * */
         private void goto7()
         {
-            logger.Append("goto7");
+            _log.Info("goto7");
 
             if (isResponseSuccessful)
             {
                 
-                logger.Append("Eis success");
+                _log.Info("Eis success");
                 return;
             }
        
@@ -936,7 +934,6 @@ namespace AnseremPackage
 
                 }
             }
-
             return;
         }
 
@@ -969,7 +966,7 @@ namespace AnseremPackage
 
         private Contact ReadContactFromCase(Guid contactId)
         {
-            logger.Append("ReadContactFromCase");
+            _log.Info("ReadContactFromCase");
 
             var contact = new Contact(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
@@ -984,7 +981,7 @@ namespace AnseremPackage
 
         private void UpdateCaseToFirstLineSupport()
         {
-            logger.Append("UpdateCaseToFirstLineSupport");
+            _log.Info("UpdateCaseToFirstLineSupport");
             try
             {
                 string sql = @$"
@@ -1011,7 +1008,7 @@ namespace AnseremPackage
         private Activity GetParentActivityFromCase()
         {
  
-            logger.Append("GetParentActivityFromCase");
+            _log.Info("GetParentActivityFromCase");
             var activity = new Activity(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Activity.Id), contactId },
@@ -1028,7 +1025,7 @@ namespace AnseremPackage
         private Guid GetServiceGroupExtra()
         {
 
-            logger.Append("GetServiceGroupExtra");
+            _log.Info("GetServiceGroupExtra");
             try
             {
                 string sql = @$"
@@ -1133,7 +1130,7 @@ namespace AnseremPackage
         // Найти основную группу по email в кому/копия
         private Guid GetServiceGroupMain()
         {
-            logger.Append("GetServiceGroupMain");
+            _log.Info("GetServiceGroupMain");
             try
             {
                 string sql = @$"
@@ -1250,14 +1247,14 @@ namespace AnseremPackage
         private void SetTravelParameter()
         {
 
-            logger.Append("SetTravelParameter");
+            _log.Info("SetTravelParameter");
 
             try
             {
                 var title = activity.GetTypedColumnValue<string>("Title");
                 var body = activity.GetTypedColumnValue<string>("Body");
             
-                logger.Append("title: " + title + "; body: " + body);
+                _log.Info("title: " + title + "; body: " + body);
                 
                 if (!string.IsNullOrEmpty(title))
                 {
@@ -1325,13 +1322,13 @@ namespace AnseremPackage
 
         private void SetSiburParameter()
         {
-            logger.Append("SetSiburParameter");
+            _log.Info("SetSiburParameter");
             try
             {
                 var title = activity.GetTypedColumnValue<string>("Title");
                 var body = activity.GetTypedColumnValue<string>("Body");
 
-                logger.Append("title: " + title + "; body: " + body);
+                _log.Info("title: " + title + "; body: " + body);
 
                 if (!string.IsNullOrEmpty(title))
                 {
@@ -1381,7 +1378,7 @@ namespace AnseremPackage
 
         private Guid GetAccountIdFromAccountCommunication()
         {
-            logger.Append("GetAccountIdFromAccountCommunication");
+            _log.Info("GetAccountIdFromAccountCommunication");
 
             string sql = @$"
                 SELECT TOP 1 * FROM AccountCommunication
@@ -1415,7 +1412,7 @@ namespace AnseremPackage
 
         private void FetchAccountById(Guid accountId)
         {
-            logger.Append("FetchAccountById");
+            _log.Info("FetchAccountById");
 
             var account = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
@@ -1430,7 +1427,7 @@ namespace AnseremPackage
 
         private Account FetchAccountByEis(Guid accountId)
         {
-            logger.Append("FetchAccountByEis");
+            _log.Info("FetchAccountByEis");
             var account = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Account.OlpCode), accountId },
@@ -1444,7 +1441,7 @@ namespace AnseremPackage
 
         private void SetContactType(Guid contactId, Guid type)
         {
-            logger.Append("SetContactType");
+            _log.Info("SetContactType");
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
             var companyId = account.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
@@ -1461,7 +1458,7 @@ namespace AnseremPackage
 
         private void SetSpamOnCase()
         {
-            logger.Append("SetSpamOnCase");
+            _log.Info("SetSpamOnCase");
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
                 UPDATE 
@@ -1478,7 +1475,7 @@ namespace AnseremPackage
 
         private void RefreshContact()
         {
-            logger.Append("RefreshContact");
+            _log.Info("RefreshContact");
             string OlpLnFnPat = eis.FirstName.English + " " + eis.MiddleName.English + " " + eis.LastName.English
             string sql = @$"
                 UPDATE
@@ -1507,7 +1504,7 @@ namespace AnseremPackage
 
         private void RefreshContactCompanyAndEmail()
         {
-            logger.Append("RefreshContactCompanyAndEmail");
+            _log.Info("RefreshContactCompanyAndEmail");
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             var accountId = account.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
@@ -1526,7 +1523,7 @@ namespace AnseremPackage
 
         private void RefreshContactTypeAndEmail()
         {
-            logger.Append("RefreshContactTypeAndEmail");
+            _log.Info("RefreshContactTypeAndEmail");
 
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
@@ -1544,7 +1541,7 @@ namespace AnseremPackage
 
         private void GetHoldingFromAccountBindedToEis()
         {
-            logger.Append("GetHoldingFromAccountBindedToEis");
+            _log.Info("GetHoldingFromAccountBindedToEis");
             var contactId contact.GetTypedColumnValue<Guid>("Id");
             string sql = @$"
                 SELECT OlpHoldingId FROM Contact c 
@@ -1568,7 +1565,7 @@ namespace AnseremPackage
 
         private void GetContactAfterRefreshing(Guid contactId)
         {
-            logger.Append("GetContactAfterRefreshing");
+            _log.Info("GetContactAfterRefreshing");
             var updatedContact = new Contact(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Contact.Id), contactId}, 
@@ -1582,7 +1579,7 @@ namespace AnseremPackage
 
         private void AddAccountToEmail()
         {
-            logger.Append("AddAccountToEmail");
+            _log.Info("AddAccountToEmail");
             string sql = @$"
                 UPDATE 
                     Activity
@@ -1597,7 +1594,7 @@ namespace AnseremPackage
 
         private OlpServiceGroup GetServiceGroupBySelectedId()
         {
-            logger.Append("GetServiceGroupBySelectedId");
+            _log.Info("GetServiceGroupBySelectedId");
             var serviceGroup = new account(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Account.Id), selectedServiceGroupId},
@@ -1612,7 +1609,7 @@ namespace AnseremPackage
         // Найти основную ГО для контакта по компаниям и ВИП Платформа
         private void GetMainServiceGroup()
         {
-            logger.Append("GetMainServiceGroup");
+            _log.Info("GetMainServiceGroup");
             /**LEGACY**/
 
             //Считать признак поиска в ЕИС
@@ -1688,7 +1685,7 @@ namespace AnseremPackage
         // Найти ГО основную по графику работы
         private void GetMainServiceGroupBasedOnTimetable()
         {
-            logger.Append("GetMainServiceGroupBasedOnTimetable");
+            _log.Info("GetMainServiceGroupBasedOnTimetable");
             /**LEGACY**/
 
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
@@ -1837,7 +1834,7 @@ namespace AnseremPackage
         private void GetMainServiceGroupBasedOnTimetableOlpFirstStage()
         {
             /**LEGACY**/
-            logger.Append("GetMainServiceGroupBasedOnTimetableOlpFirstStage");
+            _log.Info("GetMainServiceGroupBasedOnTimetableOlpFirstStage");
          
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
             var servicegrouplist = ProcessSchemaParameterServiceGroupCollection;
@@ -1978,7 +1975,7 @@ namespace AnseremPackage
         // Найти осн из почты по графику
         private void GetMainServiceGroupFromMainBasedOnTimeTable()
         {
-            logger.Append("GetMainServiceGroupFromMainBasedOnTimeTable");
+            _log.Info("GetMainServiceGroupFromMainBasedOnTimeTable");
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
 
             Guid ServiceGroupId = MainGroupIdByEmail;
@@ -2173,7 +2170,7 @@ namespace AnseremPackage
         // Найти ГО дежурную из кому/копии по графику работы
         private void GetExtraServiceGroupFromFromAndCopyBaseOnTimetable()
         {
-            logger.Append("GetExtraServiceGroupFromFromAndCopyBaseOnTimetable");
+            _log.Info("GetExtraServiceGroupFromFromAndCopyBaseOnTimetable");
             /**LEGACY**/
             
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
@@ -2319,7 +2316,7 @@ namespace AnseremPackage
         // Найти ГО дежурную по графику работы
         private void GetExtraServiceGroupBaseOnTimetable()
         {
-            logger.Append("GetExtraServiceGroupBaseOnTimetable");
+            _log.Info("GetExtraServiceGroupBaseOnTimetable");
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
 
             Guid ServiceGroupId = OLP_DUTY_SERVICE_GROUP; 
@@ -2480,7 +2477,7 @@ namespace AnseremPackage
 
         private void SetFirstLineSupport()
         {
-            logger.Append("SetFirstLineSupport");
+            _log.Info("SetFirstLineSupport");
             string sql = @$"
                 UPDATE 
                    \"Case\"
@@ -2503,7 +2500,7 @@ namespace AnseremPackage
 
         private void SetSecondLineSupport()
         {
-            logger.Append("SetSecondLineSupport");
+            _log.Info("SetSecondLineSupport");
             string sql = @$" 
                 UPDATE 
                    \"Case\"
@@ -2525,7 +2522,7 @@ namespace AnseremPackage
 
         private void SetThirdLineSupport()
         {
-            logger.Append("SetThirdLineSupport");
+            _log.Info("SetThirdLineSupport");
 
             string sql = @$"
                 UPDATE 
@@ -2552,7 +2549,7 @@ namespace AnseremPackage
          * */
         private void SendBookAutoreply()
         {
-            logger.Append("SendBookAutoreply");
+            _log.Info("SendBookAutoreply");
             return;
         }
 
@@ -2561,7 +2558,7 @@ namespace AnseremPackage
          * */
         private void SetAutonotification()
         {
-            logger.Append("SetAutonotification");
+            _log.Info("SetAutonotification");
             return;
             string sql = @$"
                 UPDATE
@@ -2578,7 +2575,7 @@ namespace AnseremPackage
         private void RefreshEmailsAndPhones()
         {
 
-            logger.Append("RefreshEmailsAndPhones");
+            _log.Info("RefreshEmailsAndPhones");
 
             /**LEGACY**/
 
@@ -2671,7 +2668,7 @@ namespace AnseremPackage
         private void GetMainServiceGroupForContactBasedOnCompany()
         {
             /**LEGACY**/
-            logger.Append("GetMainServiceGroupForContactBasedOnCompany");
+            _log.Info("GetMainServiceGroupForContactBasedOnCompany");
             
             //Считать признак поиска в ЕИС
             //Считать Ид. компании 
@@ -2731,7 +2728,7 @@ namespace AnseremPackage
 
         private void GetLoadingCheck()
         {
-            logger.Append("GetLoadingCheck");
+            _log.Info("GetLoadingCheck");
 
             sql = @$"
                 SELECT 
@@ -2760,7 +2757,7 @@ namespace AnseremPackage
 
         private void CollectServicesForInsertion()
         {
-            logger.Append("CollectServicesForInsertion");
+            _log.Info("CollectServicesForInsertion");
 
             var servicesList = eis.Services;
 
@@ -2834,7 +2831,7 @@ namespace AnseremPackage
         private Guid GetFirstLineSupport(Guid role)
         {
             
-            logger.Append("GetFirstLineSupport");
+            _log.Info("GetFirstLineSupport");
             string sql = @$"
                 SELECT 
                     sau.Id 
@@ -2866,7 +2863,7 @@ namespace AnseremPackage
 
         private bool SendEisRequest()
         {
-            logger.Append("SendEisRequest");
+            _log.Info("SendEisRequest");
             string id = "";
             string phone = "";
     
