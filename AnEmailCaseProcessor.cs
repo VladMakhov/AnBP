@@ -273,90 +273,91 @@ namespace AnseremPackage
     using System.Text;
     using System.Collections.Generic;
     using global::Common.Logging;
-    using Terrasoft.Configuration;
     using Terrasoft.Core;
+    using Terrasoft.Configuration;
+    using Terrasoft.Common;
     using Terrasoft.Core.DB;
     using Terrasoft.Core.Entities;
     using Terrasoft.Core.Entities.Events;
     using System.Net.Http;
     using System.Threading.Tasks;
-
+    using System.Text.RegularExpressions;
+    
     [EntityEventListener(SchemaName = nameof(Case))]
-    private class AnEmailCaseProcessor: BaseEntityEventListener
+    public class AnEmailCaseProcessor: BaseEntityEventListener
     { 
-       
         private static readonly ILog _log = LogManager.GetLogger("EmailCaseProcessor");
 
         /**CONSTS**/
-        private const Guid SERVICE_GROUP_TYPE_MAIN = new Guid("C82CA04F-5319-4611-A6EE-64038BA89D71");
+        private Guid SERVICE_GROUP_TYPE_MAIN = new Guid("C82CA04F-5319-4611-A6EE-64038BA89D71");
 
-        private const Guid SERVICE_GROUP_TYPE_EXTRA = new Guid("DC1B5435-6AA1-4CCD-B950-1C4ADAB1F8AD");
+        private Guid SERVICE_GROUP_TYPE_EXTRA = new Guid("DC1B5435-6AA1-4CCD-B950-1C4ADAB1F8AD");
 
-        private const Guid CONTACT_TYPE_SUPPLIER = new Guid("260067DD-145E-4BB1-9C91-6BF3A36D57E0");
+        private Guid CONTACT_TYPE_SUPPLIER = new Guid("260067DD-145E-4BB1-9C91-6BF3A36D57E0");
 
-        private const Guid CONTACT_TYPE_EMPLOYEE = new Guid("60733EFC-F36B-1410-A883-16D83CAB0980");
+        private Guid CONTACT_TYPE_EMPLOYEE = new Guid("60733EFC-F36B-1410-A883-16D83CAB0980");
 
-        private const Guid CONTACT_TYPE_CLIENT = new Guid("00783ef6-f36b-1410-a883-16d83cab0980");
+        private Guid CONTACT_TYPE_CLIENT = new Guid("00783ef6-f36b-1410-a883-16d83cab0980");
 
-        private const Guid OLP_DUTY_SERVICE_GROUP = new Guid("3A8B2C01-7A4D-4D5D-A7EA-8563BF6220B9"); 
+        private Guid OLP_DUTY_SERVICE_GROUP = new Guid("3A8B2C01-7A4D-4D5D-A7EA-8563BF6220B9"); 
 
         // OLP:ГО Общая 1 линия поддержки
-        private const Guid OLP_GENERAL_FIRST_LINE_SUPPORT = new Guid("64833178-8B17-4BB6-8CD9-6165B9B82637"); 
+        private Guid OLP_GENERAL_FIRST_LINE_SUPPORT = new Guid("64833178-8B17-4BB6-8CD9-6165B9B82637"); 
 
         // OLP:ОР 1 линия поддержки
-        private const Guid OLP_OR_FIRST_LINE_SUPPORT = new Guid("B401FC39-77E4-4B53-985F-21E68947A107"); 
+        private Guid OLP_OR_FIRST_LINE_SUPPORT = new Guid("B401FC39-77E4-4B53-985F-21E68947A107"); 
 
         // OLP:ОР 2 линия поддержки
-        private const Guid OLP_OR_SECOND_LINE_SUPPORT = new Guid("DF594796-8E36-41BC-8EDD-732967053947"); 
+        private Guid OLP_OR_SECOND_LINE_SUPPORT = new Guid("DF594796-8E36-41BC-8EDD-732967053947"); 
 
         // OLP:ОР 3 линия поддержки (старшие агенты)
-        private const Guid OLP_OR_THIRD_LINE_SUPPORT = new Guid("3D0C8864-BF2F-4734-8A29-31873EB07440"); 
+        private Guid OLP_OR_THIRD_LINE_SUPPORT = new Guid("3D0C8864-BF2F-4734-8A29-31873EB07440"); 
 
-        private const Guid CASE_URGENCY_TYPE_NOT_URGENT = new Guid("7a469f22-111d-4749-b5c2-e2a109a520a0");
+        private Guid CASE_URGENCY_TYPE_NOT_URGENT = new Guid("7a469f22-111d-4749-b5c2-e2a109a520a0");
 
-        private const Guid CASE_URGENCY_TYPE_URGENT = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
+        private Guid CASE_URGENCY_TYPE_URGENT = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
 
-        private const Guid CASE_IMPORTANCY_IMPOTANT = new Guid("fd6b8923-4af8-48f9-8180-b6e1da3a1e2d");
+        private Guid CASE_IMPORTANCY_IMPOTANT = new Guid("fd6b8923-4af8-48f9-8180-b6e1da3a1e2d");
 
-        private const Guid CASE_IMPORTANCY_NOT_IMPOTANT = new Guid("007fc788-5edd-42dd-a9ac-c56d010e7205");
+        private Guid CASE_IMPORTANCY_NOT_IMPOTANT = new Guid("007fc788-5edd-42dd-a9ac-c56d010e7205");
 
-        private const Guid VIP_PLATFORM = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
+        private Guid VIP_PLATFORM = new Guid("97c567ad-dbf8-4923-a766-c49a85b3ebdf");
 
-        private const Guid ACTIVITY_PRIORITY_HIGH = new Guid("D625A9FC-7EE6-DF11-971B-001D60E938C6");
+        private Guid ACTIVITY_PRIORITY_HIGH = new Guid("D625A9FC-7EE6-DF11-971B-001D60E938C6");
 
-        private const Guid ACTIVITY_PRIORITY_MEDIUM = new Guid("AB96FA02-7FE6-DF11-971B-001D60E938C6");
+        private Guid ACTIVITY_PRIORITY_MEDIUM = new Guid("AB96FA02-7FE6-DF11-971B-001D60E938C6");
 
-        private const Guid ACTIVITY_PRIORITY_LOW = new Guid("AC96FA02-7FE6-DF11-971B-001D60E938C6");
+        private Guid ACTIVITY_PRIORITY_LOW = new Guid("AC96FA02-7FE6-DF11-971B-001D60E938C6");
 
-        private const Guid CONTACT_TYPE_UNDEFINED_CLIENT_SPAM = new Guid("1a334238-08ba-466d-8d40-a996afcb8fe1");
+        private Guid CONTACT_TYPE_UNDEFINED_CLIENT_SPAM = new Guid("1a334238-08ba-466d-8d40-a996afcb8fe1");
 
-        private const Guid CASE_CATEGORY_EMPLOYEE_SUPPLIER = new Guid("84f67e2e-842e-47ae-99aa-882d1bc8e513");
+        private Guid CASE_CATEGORY_EMPLOYEE_SUPPLIER = new Guid("84f67e2e-842e-47ae-99aa-882d1bc8e513");
 
-        private const Guid ACCOUNT_TYPE_SUPPLIER = new Guid("1414f55f-21d2-4bb5-847a-3a0681d0a13a");
+        private Guid ACCOUNT_TYPE_SUPPLIER = new Guid("1414f55f-21d2-4bb5-847a-3a0681d0a13a");
 
-        private const Guid ACCOUNT_TYPE_OUR_COMPANY = new Guid("57412fad-53e6-df11-971b-001d60e938c6");
+        private Guid ACCOUNT_TYPE_OUR_COMPANY = new Guid("57412fad-53e6-df11-971b-001d60e938c6");
         
-        private const Guid CASE_STATUS_CLOSED = new Guid("ae7f411e-f46b-1410-009b-0050ba5d6c38");
+        private Guid CASE_STATUS_CLOSED = new Guid("ae7f411e-f46b-1410-009b-0050ba5d6c38");
         
-        private const Guid CASE_STATUS_CANCELED = new Guid("6e5f4218-f46b-1410-fe9a-0050ba5d6c38");
+        private Guid CASE_STATUS_CANCELED = new Guid("6e5f4218-f46b-1410-fe9a-0050ba5d6c38");
  
-        private const Guid COMMUNICATION_TYPE_EMAIL_DOMAIN = new Guid("9E3A0896-0CBE-4733-8013-1E70CB09800C");
+        private Guid COMMUNICATION_TYPE_EMAIL_DOMAIN = new Guid("9E3A0896-0CBE-4733-8013-1E70CB09800C");
         
-        private const Guid COMMUNICATION_TYPE_EMAIL = new Guid("EE1C85C3-CFCB-DF11-9B2A-001D60E938C6");
+        private Guid COMMUNICATION_TYPE_EMAIL = new Guid("EE1C85C3-CFCB-DF11-9B2A-001D60E938C6");
         
-        private const Guid ACTIVITY_TYPE_EMAIL = new Guid("E2831DEC-CFC0-DF11-B00F-001D60E938C6");
+        private Guid ACTIVITY_TYPE_EMAIL = new Guid("E2831DEC-CFC0-DF11-B00F-001D60E938C6");
         
-        private const Guid OLP_AC_COMPANY_IS_NOT_DEFINED = new Guid("A1998F90-2EEC-48A4-94E8-A3CF48134FFB");
+        private Guid OLP_AC_COMPANY_IS_NOT_DEFINED = new Guid("A1998F90-2EEC-48A4-94E8-A3CF48134FFB");
         /**CONSTS**/
  
         /**SYS_SETTINGS**/
-        private bool isOlpFirstStage = GetOlpFirstStage();
+        private bool isOlpFirstStage;
 
-        private bool LoadingCheck = GetLoadingCheck(); 
+        private bool LoadingCheck;
         /**SETTINGS**/
         
         /**PARAMS**/
-        private string caseCategory { get; set; }
+        private Guid caseCategory { get; set; }
 
         private Contact contact { get; set; }
         
@@ -392,11 +393,11 @@ namespace AnseremPackage
 
         private Guid urgency { get; set; }
         
-        private Guid email { get; set; }
+        private string email { get; set; }
         
-        private Guid copies { get; set; }
+        private string copies { get; set; }
         
-        private Guid mailto { get; set; }
+        private string mailto { get; set; }
 
         private bool isResponseSuccessful { get; set; }
         
@@ -449,12 +450,16 @@ namespace AnseremPackage
         private string ProcessSchemaParamTime { get; set;}
         /**LEGACY**/
         
-        public override void OnInserting(object sender, EntityAfterEventArgs e)
+
+        public override void OnInserting(object sender, EntityBeforeEventArgs e)
         {
             base.OnInserting(sender, e);
             var _case = (Entity)sender;
             caseId = _case.GetTypedColumnValue<Guid>("Id");
-            
+ 
+            isOlpFirstStage = GetOlpFirstStage();
+            LoadingCheck = GetLoadingCheck();
+
             _log.Info("START");
             _log.Info("CaseId: " + caseId);
 
@@ -672,7 +677,7 @@ namespace AnseremPackage
             // Выставить холдинг компании контакта
             holding = GetHoldingFromAccountBindedToEis();            
             
-            ProcessSchemaParamHoldingFoundId = holding;
+            ProcessSchemaParamHoldingFoundId = (holding != Guid.Empty);
 
             // Чтение карточки контакта после обновления
             ReadContactAfterRefreshing();
@@ -691,8 +696,9 @@ namespace AnseremPackage
 
             clientVipPlatform = contact.GetTypedColumnValue<bool>("OlpSignVipPlatf");
 
-            clientCompanyId = contact.GetTypedColumnValue<bool>("Account");
-            ProcessSchemaParamCompanyFoundId = clientCompanyId;
+            clientCompanyId = contact.GetTypedColumnValue<Guid>("Account");
+
+            ProcessSchemaParamCompanyFoundId = (clientCompanyId != Guid.Empty);
             
             AddAccountToEmail();
 
@@ -764,11 +770,11 @@ namespace AnseremPackage
                         // Найти ГО дежурную по графику работы
                         GetExtraServiceGroupBaseOnTimetable();
                         
-                        if (selectedServiceGroupId && (!extraServiceGroup || contact.email.contains("NOREPLY@") || contact.email.contains("NO-REPLY@") || contact.email.contains("EDM@npk.team")))
+                        if (selectedServiceGroupId && (!extraServiceGroup || contact.GetTypedColumnValue<string>("Email").contains("NOREPLY@") || contact.GetTypedColumnValue<string>("Email").contains("NO-REPLY@") || contact.GetTypedColumnValue<string>("Email").contains("EDM@npk.team")))
                         {
                             goto6();
                         }
-                        else if (!selectedServiceGroupId && (!contact.email.contains("NOREPLY@") && !contact.email.contains("NO-REPLY@") && !contact.email.contains("EDM@npk.team")))
+                        else if (selectedServiceGroupId == Guid.Empty && (!contact.GetTypedColumnValue<string>("Email").contains("NOREPLY@") && !contact.GetTypedColumnValue<string>("Email").contains("NO-REPLY@") && !contact.GetTypedColumnValue<string>("Email").contains("EDM@npk.team")))
                         {
                             SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                             SetAutonotification();
@@ -834,7 +840,7 @@ namespace AnseremPackage
                 // Найти основную ГО для контакта по компаниям
                 GetMainServiceGroupForContactBasedOnCompany(); 
 
-                selectedServiceGroupId = selectedServiceGroupId == Guid.Empty ? etraServiceGroupFromAndCopy : selectedServiceGroupId;
+                selectedServiceGroupId = selectedServiceGroupId == Guid.Empty ? extraServiceGroupFromAndCopy : selectedServiceGroupId;
                 
                 SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                 SetAutonotification();
@@ -850,7 +856,7 @@ namespace AnseremPackage
 
             // Выбранная ГО ВИП Платформа?
             // Да
-            if (serviceGroup.GetTypedColumnValue<bool>("OlpTypeGroupService") == VIP_PLATFORM)
+            if (serviceGroup.GetTypedColumnValue<Guid>("OlpTypeGroupService") == VIP_PLATFORM)
             {
                 importancy = CASE_IMPORTANCY_IMPOTANT;
                 SetSecondLineSupport();
@@ -919,7 +925,7 @@ namespace AnseremPackage
                 CollectServicesForInsertion();
 
                 // Запустить "OLP: Подпроцесс - Обновление услуг контакта v 3.0.1"
-                IProcessEngine processEngine = userConnection.ProcessEngine;
+                IProcessEngine processEngine = UserConnection.ProcessEngine;
                 IProcessExecutor processExecutor = processEngine.ProcessExecutor;
 
                 try
@@ -939,7 +945,7 @@ namespace AnseremPackage
 
         private bool GetOlpFirstStage()
         {
-            string sql = @$"
+            string sql = $@"
                 SELECT 
                     BooleanValue 
                 FROM 
@@ -947,8 +953,7 @@ namespace AnseremPackage
                 WHERE 
                     SysSettingsId = (
                         SELECT id FROM SysSettings WHERE Code LIKE 'OLPIsFirstStepToPROD'
-                        )
-                ";
+                        )";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -984,9 +989,9 @@ namespace AnseremPackage
             _log.Info("UpdateCaseToFirstLineSupport");
             try
             {
-                string sql = @$"
+                string sql = $@"
                     UPDATE 
-                    \"Case\"
+                    Case
                     SET 
                     OlpGroupServices = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', 
                                      OlpSupportLine = '{OLP_OR_FIRST_LINE_SUPPORT}',
@@ -994,8 +999,8 @@ namespace AnseremPackage
                                      OlpUrgency = '{CASE_URGENCY_TYPE_NOT_URGENT}',
                                      Category = '{caseCategory}'
                                          WHERE 
-                                         Id = '{caseId}'
-                                         ";
+                                         Id = '{caseId}'";
+
                 CustomQuery query = new CustomQuery(UserConnection, sql);
                 query.Execute();
             }
@@ -1012,7 +1017,7 @@ namespace AnseremPackage
             var activity = new Activity(UserConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Activity.Id), contactId },
-                    { nameof(Activity.TypeId) ACTIVITY_TYPE_EMAIL} 
+                { nameof(Activity.TypeId), ACTIVITY_TYPE_EMAIL } 
             };
 
             if (activity.FetchFromDB(conditions))
@@ -1028,12 +1033,11 @@ namespace AnseremPackage
             _log.Info("GetServiceGroupExtra");
             try
             {
-                string sql = @$"
+                string sql = $@"
                     SELECT * FROM OlpServiceGroup
                     WHERE Id IS NOT NULL AND
                     OlpSgEmail IS NOT NULL AND
-                    OlpTypeGroupService = '{SERVICE_GROUP_TYPE_EXTRA}' 
-                    ";
+                    OlpTypeGroupService = '{SERVICE_GROUP_TYPE_EXTRA}'";
 
                 CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -1050,9 +1054,9 @@ namespace AnseremPackage
                             string EmailBoxName = "";
                             string EmailBoxALias = "";
 
-                            ExtraGroupId = reader.GetColumnValue<string>("ExtraGroupId");
+                            var ExtraGroupId = reader.GetColumnValue<string>("ExtraGroupId");
 
-                            ExtraEmailBox = reader.GetColumnValue<string>("ExtraGroupEmailBoxId");
+                            var ExtraEmailBox = reader.GetColumnValue<string>("ExtraGroupEmailBoxId");
 
                             //ищем текстовое значение ящика по ГО
                             EntitySchemaQuery ExtraEmailBoxString = new EntitySchemaQuery(UserConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
@@ -1119,13 +1123,14 @@ namespace AnseremPackage
                     }
                 }
                 return;
-                /**LEGACY**/
-                catch (Exception e)
-                {
-                    _log.Error("Exception at GetServiceGroupExtra: " + e);
-                }
 
             }
+            /**LEGACY**/
+            catch (Exception e)
+            {
+                _log.Error("Exception at GetServiceGroupExtra: " + e);
+            }
+        }
 
         // Найти основную группу по email в кому/копия
         private Guid GetServiceGroupMain()
@@ -1133,12 +1138,11 @@ namespace AnseremPackage
             _log.Info("GetServiceGroupMain");
             try
             {
-                string sql = @$"
+                string sql = $@"
                     SELECT * FROM OlpServiceGroup
                     WHERE Id IS NOT NULL AND
                     OlpSgEmail IS NOT NULL AND
-                    OlpTypeGroupService = '{SERVICE_GROUP_TYPE_MAIN}' 
-                    "; 
+                    OlpTypeGroupService = '{SERVICE_GROUP_TYPE_MAIN}'"; 
 
                     CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -1225,7 +1229,7 @@ namespace AnseremPackage
                                 {
                                     foreach (var groupsshedule in entityCollection) 
                                     {
-                                        MainSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name));
+                                        MainSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
                                         return;
                                     }
                                 }
@@ -1258,7 +1262,7 @@ namespace AnseremPackage
                 
                 if (!string.IsNullOrEmpty(title))
                 {
-                    themetravel = "";
+                    var themetravel = "";
                     if (!string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("TRAVEL-"))
                     {
 
@@ -1294,24 +1298,27 @@ namespace AnseremPackage
                 }
 
 
-                string sql = @$"
+                string sql = $@"
                     UPDATE 
-                        \"Case\" 
+                        Case 
                     SET 
                         OlpReloThemeSibur = '{themetravel}',
                     WHERE 
-                        id = '{caseId}';
+                        id = '{caseId}'";
                     
+                string sql2 = $@"
                     UPDATE 
-                        \"Case\"
+                        Case
                     SET 
                         OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
                     WHERE 
-                        statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}' 
-                ";
+                        statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
-                CustomQuery query = new CustomQuery(UserConnection, sql);
-                query.Execute();
+                CustomQuery query1 = new CustomQuery(UserConnection, sql1);
+                query1.Execute();
+
+                CustomQuery query2 = new CustomQuery(UserConnection, sql2);
+                query2.Execute();
             }
             catch (Exception e)
             {
@@ -1329,7 +1336,8 @@ namespace AnseremPackage
                 var body = activity.GetTypedColumnValue<string>("Body");
 
                 _log.Info("title: " + title + "; body: " + body);
-
+                
+                var themetravel = "";
                 if (!string.IsNullOrEmpty(title))
                 {
                     if(string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("ЗАЯВКА ПО РЕЛОКАЦИИ_")) 
@@ -1348,17 +1356,17 @@ namespace AnseremPackage
                     }
                 }
                 
-                string sql1 = @$" 
+                string sql1 = $@" 
                     UPDATE 
-                        \"Case\" 
+                        Case 
                     SET 
                         OlpReloThemeSibur = '{themetravel}',
                     WHERE 
                         id = '{caseId}'";
                     
-                string sql2 = @$" 
+                string sql2 = $@"
                     UPDATE 
-                        \"Case\"
+                        Case
                     SET 
                         OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
                     WHERE 
@@ -1380,7 +1388,7 @@ namespace AnseremPackage
         {
             _log.Info("GetAccountIdFromAccountCommunication");
 
-            string sql = @$"
+            string sql = $@"
                 SELECT TOP 1 * FROM AccountCommunication
                 WHERE 
                 (
@@ -1390,11 +1398,10 @@ namespace AnseremPackage
                 )
                 OR
                 (
-                 CommunicationType = '{}'
+                 CommunicationType = 'Email'
                  AND 
                  Number = '{email}' 
-                )
-            ";
+                )";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -1408,9 +1415,10 @@ namespace AnseremPackage
                     }
                 }
             }
+            return Guid.Empty;
         }
 
-        private void FetchAccountById(Guid accountId)
+        private Account FetchAccountById(Guid accountId)
         {
             _log.Info("FetchAccountById");
 
@@ -1444,14 +1452,14 @@ namespace AnseremPackage
             _log.Info("SetContactType");
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
             var companyId = account.GetTypedColumnValue<Guid>("Id");
-            string sql = @$"
+            string sql = $@"
                 UPDATE 
                     Contact
                 SET 
                     Type = '{type}',
                     Account = '{companyId}'
-                WHERE id = '{contactId}'
-            ";
+                WHERE id = '{contactId}'";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -1460,15 +1468,15 @@ namespace AnseremPackage
         {
             _log.Info("SetSpamOnCase");
             var contactId = contact.GetTypedColumnValue<Guid>("Id");
-            string sql = @$"
+            string sql = $@"
                 UPDATE 
                     Contact
                 SET 
                     Type = '{CONTACT_TYPE_UNDEFINED_CLIENT_SPAM}', 
                     Account = '{OLP_AC_COMPANY_IS_NOT_DEFINED}' 
                 WHERE
-                    Id = '{contactId}'
-            ";
+                    Id = '{contactId}'";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -1476,8 +1484,8 @@ namespace AnseremPackage
         private void RefreshContact()
         {
             _log.Info("RefreshContact");
-            string OlpLnFnPat = eis.FirstName.English + " " + eis.MiddleName.English + " " + eis.LastName.English
-            string sql = @$"
+            string OlpLnFnPat = eis.FirstName.English + " " + eis.MiddleName.English + " " + eis.LastName.English;
+            string sql = $@"
                 UPDATE
                     Contact
                 SET
@@ -1496,8 +1504,8 @@ namespace AnseremPackage
                     Type = '{CONTACT_TYPE_CLIENT}',
                     OlpExternalContId = '{eis.Id}' 
                 WHERE 
-                    Id = '{contactId}'
-            ";
+                    Id = '{contactId}'";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -1505,9 +1513,9 @@ namespace AnseremPackage
         private void RefreshContactCompanyAndEmail()
         {
             _log.Info("RefreshContactCompanyAndEmail");
-            var contactId contact.GetTypedColumnValue<Guid>("Id");
+            var contactId = contact.GetTypedColumnValue<Guid>("Id");
             var accountId = account.GetTypedColumnValue<Guid>("Id");
-            string sql = @$"
+            string sql = $@"
                 UPDATE 
                     Contact
                 SET,
@@ -1515,8 +1523,8 @@ namespace AnseremPackage
                     Account = '{accountId}',
                     Type = '{CONTACT_TYPE_CLIENT}',
                 WHERE 
-                    Id = '{contactId}'
-            ";
+                    Id = '{contactId}'";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -1525,16 +1533,16 @@ namespace AnseremPackage
         {
             _log.Info("RefreshContactTypeAndEmail");
 
-            var contactId contact.GetTypedColumnValue<Guid>("Id");
-            string sql = @$"
+            var contactId = contact.GetTypedColumnValue<Guid>("Id");
+            string sql = $@"
                 UPDATE 
                     Contact
                 SET
                     Email = '{email}', 
                     Type = '{CONTACT_TYPE_CLIENT}',
                 WHERE 
-                    Id = '{contactId}'
-            ";
+                    Id = '{contactId}'";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -1542,12 +1550,13 @@ namespace AnseremPackage
         private void GetHoldingFromAccountBindedToEis()
         {
             _log.Info("GetHoldingFromAccountBindedToEis");
-            var contactId contact.GetTypedColumnValue<Guid>("Id");
-            string sql = @$"
+            
+            var contactId = contact.GetTypedColumnValue<Guid>("Id");
+
+            string sql = $@"
                 SELECT OlpHoldingId FROM Contact c 
                 INNER JOIN Account a ON a.Id = c.AccountId
-                WHERE c.Id = '{contactid}'
-                ";
+                WHERE c.Id = '{contactid}'";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -1580,14 +1589,14 @@ namespace AnseremPackage
         private void AddAccountToEmail()
         {
             _log.Info("AddAccountToEmail");
-            string sql = @$"
+            string sql = $@"
                 UPDATE 
                     Activity
                 SET 
                     Account = '{clientCompanyId}', 
                 WHERE 
-                    Id = '{parentActivityId}'
-            ";
+                    Id = '{parentActivityId}'";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -1822,7 +1831,7 @@ namespace AnseremPackage
             }
             else 
             {
-                ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp);
+                ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
             }
 
             return;
@@ -2097,7 +2106,7 @@ namespace AnseremPackage
                 ProcessSchemaParamServiceGroupId = ServiceGroupId;
                 ProcessSchemaParameterIsDutyGroup = true;
                 ServiceGroupForOrder = ServiceGroupId;
-                return true;
+                return;
             }
 
             //можно смотреть по стандартному графику
@@ -2161,9 +2170,6 @@ namespace AnseremPackage
                 ProcessSchemaParameterIsDutyGroup = true;
                 ServiceGroupForOrder = ServiceGroupId;
             }
-
-            return true;
-
             /**LEGACY**/
         }
 
@@ -2478,9 +2484,9 @@ namespace AnseremPackage
         private void SetFirstLineSupport()
         {
             _log.Info("SetFirstLineSupport");
-            string sql = @$"
+            string sql = $@"
                 UPDATE 
-                   \"Case\"
+                   Case
                 SET 
                     OlpGroupServices = '{selectedServiceGroupId}',
                     OlpSupportLine = '{OLP_OR_FIRST_LINE_SUPPORT}',
@@ -2489,10 +2495,10 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', 
+                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}' 
                 WHERE 
-                    Id = '{caseId}'
-            ";
+                    Id = '{caseId}'";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
 
@@ -2501,9 +2507,9 @@ namespace AnseremPackage
         private void SetSecondLineSupport()
         {
             _log.Info("SetSecondLineSupport");
-            string sql = @$" 
+            string sql = $@" 
                 UPDATE 
-                   \"Case\"
+                   Case
                 SET 
                     OlpGroupServices = '{selectedServiceGroupId}',
                     OlpSupportLine = '{OLP_OR_SECOND_LINE_SUPPORT}',
@@ -2512,10 +2518,10 @@ namespace AnseremPackage
                     OlpIsAuthorVIP = '{clientVip}',
                     Account = '{clientCompanyId}',
                     Category = '{caseCategory}',
-                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', 
+                    OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}' 
                 WHERE
-                    Id = '{caseId}'
-            ";
+                    Id = '{caseId}'";
+
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -2524,9 +2530,9 @@ namespace AnseremPackage
         {
             _log.Info("SetThirdLineSupport");
 
-            string sql = @$"
+            string sql = $@"
                 UPDATE 
-                   \"Case\"
+                   Case
                 SET 
                     OlpGroupServices = '{selectedServiceGroupId}',
                     OlpSupportLine = '{OLP_OR_THIRD_LINE_SUPPORT}',
@@ -2537,8 +2543,7 @@ namespace AnseremPackage
                     Category = '{caseCategory}',
                     OlpServiceGroupForOrder = '{OlpServiceGroupForOrder}', 
                 WHERE 
-                    Id = '{caseId}'
-            ";
+                    Id = '{caseId}'";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
  
@@ -2560,14 +2565,13 @@ namespace AnseremPackage
         {
             _log.Info("SetAutonotification");
             return;
-            string sql = @$"
+            string sql = $@"
                 UPDATE
                     Activity
                 SET 
                     IsAutoSubmitted = '{true}',
                 WHERE 
-                    id = '{parentActivityId}' 
-            ";
+                    id = '{parentActivityId}'";
             CustomQuery query = new CustomQuery(UserConnection, sql);
             query.Execute();
         }
@@ -2608,7 +2612,7 @@ namespace AnseremPackage
                     var entityemailContact = emailContact.CreateEntity(UserConnection);
 
                     entityemailContact.UseAdminRights = false;
-                    entityemailContact.SetDefColumnValues()
+                    entityemailContact.SetDefColumnValues();
                     entityemailContact.SetColumnValue("ContactId", IdContact );
                     entityemailContact.SetColumnValue("Number", NameEmail);
                     entityemailContact.SetColumnValue("CommunicationTypeId", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6"));
@@ -2618,7 +2622,7 @@ namespace AnseremPackage
             }
 
             // обновление/добавление телефона
-            var listPhone = eis.OlpPhones_Out);
+            var listPhone = eis.OlpPhones_Out;
             var IdContact1 = ContactIdForEmailAndPhone;
 
             foreach (var item1 in listPhone) 
@@ -2720,9 +2724,6 @@ namespace AnseremPackage
                 ProcessSchemaParameterIsDutyGroup = true;
 
             }
-
-            return true;
-
             /**LEGACY**/
         }
 
@@ -2730,7 +2731,7 @@ namespace AnseremPackage
         {
             _log.Info("GetLoadingCheck");
 
-            sql = @$"
+            sql = $@"
                 SELECT 
                     BooleanValue 
                 FROM 
@@ -2738,8 +2739,7 @@ namespace AnseremPackage
                 WHERE 
                     SysSettingsId = (
                         SELECT id FROM SysSettings WHERE Code LIKE 'OLPLoadingCheck'
-                        )
-                ";
+                        )";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
@@ -2832,7 +2832,7 @@ namespace AnseremPackage
         {
             
             _log.Info("GetFirstLineSupport");
-            string sql = @$"
+            string sql = $@"
                 SELECT 
                     sau.Id 
                 FROM 
@@ -2844,8 +2844,7 @@ namespace AnseremPackage
                 WHERE
                     suir.SysRole = '{role}'
                 AND
-                    suir.SysRole = '{OLP_OR_FIRST_LINE_SUPPORT}' 
-                ";
+                    suir.SysRole = '{OLP_OR_FIRST_LINE_SUPPORT}'";
 
             CustomQuery query = new CustomQuery(UserConnection, sql);
 
