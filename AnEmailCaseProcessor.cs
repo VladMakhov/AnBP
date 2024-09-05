@@ -296,7 +296,7 @@ namespace AnseremPackage
         private static readonly ILog _log = LogManager.GetLogger("EmailCaseProcessor");
 
         /**CONSTS**/
-        private UserConnection _userConnection;
+        private UserConnection _userConnection { get; set; }
 
         private Guid SERVICE_GROUP_TYPE_MAIN = new Guid("C82CA04F-5319-4611-A6EE-64038BA89D71");
 
@@ -471,7 +471,7 @@ namespace AnseremPackage
             isOlpFirstStage = GetOlpFirstStage();
             LoadingCheck = GetLoadingCheck();
 
-            _userConnection = UserConnection;
+            _userConnection = _case.UserConnection;
 
             _log.Info("START");
             _log.Info("CaseId: " + caseId);
@@ -751,7 +751,7 @@ namespace AnseremPackage
                 _log.Info("Which service group to set");
 
                 // Указана только дежурная в кому/копии
-                if (mainServiceGroup == Guid.Empty && extraServiceGroupFromAndCopy != Guid.Empty && isExtraServiceGroup) // Разобраться с параметрами
+                if (mainServiceGroup == Guid.Empty && ExtraGroupIdByEmail != Guid.Empty && isExtraServiceGroup) // Разобраться с параметрами
                 {
                     _log.Info("Only duty group was in to/copy");
                     goto5();
@@ -773,7 +773,7 @@ namespace AnseremPackage
 
                     // Найти осн из почты по графику
                     GetMainServiceGroupFromMainBasedOnTimeTable(); 
-                    if (isExtraServiceGroup && extraServiceGroupFromAndCopy)
+                    if (isExtraServiceGroup && ExtraGroupIdByEmail != Guid.Empty)
                     {
                         goto5();
                     }
@@ -856,7 +856,7 @@ namespace AnseremPackage
                 // Найти основную ГО для контакта по компаниям
                 GetMainServiceGroupForContactBasedOnCompany(); 
 
-                selectedServiceGroupId = selectedServiceGroupId == Guid.Empty ? extraServiceGroupFromAndCopy : selectedServiceGroupId;
+                selectedServiceGroupId = selectedServiceGroupId == Guid.Empty ? ExtraGroupIdByEmail : selectedServiceGroupId;
                 
                 SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                 SetAutonotification();
@@ -887,7 +887,7 @@ namespace AnseremPackage
 
                 if (serviceGroup.GetTypedColumnValue<bool>("OlpDistribution"))
                 {
-                    var thirdLineSupport = GetThirdLineSupport(); // TODO
+                    var thirdLineSupport = GetThirdLineSupport(serviceGroup.GetTypedColumnValue<Guid>("OlpOrgRole")); 
                     if (thirdLineSupport != Guid.Empty)
                     {
                         SetThirdLineSupport();
@@ -1253,10 +1253,10 @@ namespace AnseremPackage
                                     }
                                 }
                             }
+                            return MainGroupId; // TODO
                         }
                     }
                 }
-                return MainGroupId; // TODO
             }
             catch (Exception e)
             {
@@ -1402,9 +1402,26 @@ namespace AnseremPackage
 
         }
 
+        private string GetDomainFromEmail()
+        {
+            string s = email;
+			string d = email;
+			
+            string[] words = s.Split('<');
+			string[] words1 = words[1].Split('>');
+			
+            email = words1[0]; // TODO
+			
+			string[] wordd = d.Split('@');
+			
+            return wordd[1];
+        }
+
         private Guid GetAccountIdFromAccountCommunication()
         {
             _log.Info("GetAccountIdFromAccountCommunication");
+            
+            var domain = GetDomainFromEmail();
 
             string sql = $@"
                 SELECT TOP 1 * FROM AccountCommunication
@@ -1503,7 +1520,10 @@ namespace AnseremPackage
         private void RefreshContact()
         {
             _log.Info("RefreshContact");
+            
             string OlpLnFnPat = eis.FirstName.English + " " + eis.MiddleName.English + " " + eis.LastName.English;
+            var accountId = account.GetTypedColumnValue<Guid>("Id");
+            
             string sql = $@"
                 UPDATE
                     Contact
@@ -1575,7 +1595,7 @@ namespace AnseremPackage
             string sql = $@"
                 SELECT OlpHoldingId FROM Contact c 
                 INNER JOIN Account a ON a.Id = c.AccountId
-                WHERE c.Id = '{contactid}'";
+                WHERE c.Id = '{contactId}'";
 
             CustomQuery query = new CustomQuery(_userConnection, sql);
 
@@ -1624,7 +1644,7 @@ namespace AnseremPackage
         private OlpServiceGroup GetServiceGroupBySelectedId()
         {
             _log.Info("GetServiceGroupBySelectedId");
-            var serviceGroup = new Account(_userConnection);
+            var serviceGroup = new OlpServiceGroup(_userConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 // { nameof(Account.Id), selectedServiceGroupId}, // TODO
             };
@@ -1724,9 +1744,12 @@ namespace AnseremPackage
 
             foreach (var item in servicegrouplist)
             {
-                Guid ServiceGroupId = item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId"); 
-                string ServiceTimeTableId = item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId"); 
-                
+                Guid ServiceGroupId = Guid.Empty;
+                string ServiceTimeTableId = "";
+                if (item.TryGetValue<string>("ProcessSchemaParamServiceTimeTableId", out ServiceTimeTableId)) { continue; };
+                if (item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId", out ServiceGroupId)) { continue; };
+
+
                 if (ServiceTimeTableId == "Круглосуточно")
                 {
                     ServiceGroupIdTemp = ServiceGroupId;
@@ -1873,8 +1896,11 @@ namespace AnseremPackage
 
             foreach (var item in servicegrouplist) 
             {
-                string ServiceTimeTableId = item.TryGetValue<string>("ProcessSchemaParamServiceTimeTableId");
-                Guid ServiceGroupId = item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId");
+                string ServiceTimeTableId = "";
+                Guid ServiceGroupId = Guid.Empty;
+                
+                if (item.TryGetValue<string>("ProcessSchemaParamServiceTimeTableId", out ServiceTimeTableId)) { continue; };
+                if (item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId", out ServiceGroupId)) { continue; };
 
                 if (ServiceTimeTableId == "Круглосуточно")
                 {
@@ -2613,7 +2639,7 @@ namespace AnseremPackage
             foreach (var item in emailList) 
             {
 
-                NameEmail = item.Address;
+                var NameEmail = item.Address;
 
                 if (string.IsNullOrEmpty(NameEmail)) { continue; }	// если нет почты то идти на следующий
 
@@ -2885,6 +2911,40 @@ namespace AnseremPackage
             return Guid.Empty; 
         }
 
+        private Guid GetThirdLineSupport(Guid role)
+        {
+            _log.Info("GetThirdLineSupport");
+            string sql = $@"
+                SELECT 
+                    sau.Id 
+                FROM 
+                    SysUserInRole suir
+                INNER JOIN
+                    SysAdminUnit sau 
+                ON 
+                    suir.SysUser = sau.Id
+                WHERE
+                    suir.SysRole = '{role}'
+                AND
+                    suir.SysRole = '{OLP_OR_THIRD_LINE_SUPPORT}'
+                AND
+                    sau.LoggedIn = 1;";
+
+            CustomQuery query = new CustomQuery(_userConnection, sql);
+
+            using (var db = _userConnection.EnsureDBConnection())
+            {
+                using (var reader = query.ExecuteReader(db))
+                {
+                    if (reader.Read())
+                    {
+                        return reader.GetColumnValue<Guid>("Id");
+                    }
+                }
+            }
+            return Guid.Empty; 
+        }
+
         private bool SendEisRequest()
         {
             _log.Info("SendEisRequest");
@@ -3009,4 +3069,3 @@ namespace AnseremPackage
     }
     
 }
-
