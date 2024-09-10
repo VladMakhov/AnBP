@@ -438,8 +438,8 @@ namespace AnseremPackage
         
         public Guid ContactIdForEmailAndPhone { get; set; }
         
-        public CompositeObjectList<CompositeObject> ProcessSchemaParameterServiceGroupCollection { get; set; }
-        
+        public List<ServiceGroupElement> ProcessSchemaParameterServiceGroupCollection { get; set; }
+         
         public bool ProcessSchemaParameterIsDutyGroup { get; set; }
         
         public Guid ProcessSchemaParamServiceGroupId { get; set; }
@@ -502,16 +502,21 @@ namespace AnseremPackage
 
             // email родительской активности
             activity = GetParentActivityFromCase();
+            try
+            {
+                email = activity.GetTypedColumnValue<string>("Sender");
 
-            email = activity.GetTypedColumnValue<string>("Sender");
+                mailto = activity.GetTypedColumnValue<string>("Recepient"); 
 
-            mailto = activity.GetTypedColumnValue<string>("Recepient"); 
+                copies = activity.GetTypedColumnValue<string>("CopyRecepient"); 
 
-            copies = activity.GetTypedColumnValue<string>("CopyRecepient"); 
-            
-            theme = activity.GetTypedColumnValue<string>("Theme"); 
-
-            _log.Info("email: " + email + "; mailto: " + mailto + "; copies: " + copies);
+                theme = activity.GetTypedColumnValue<string>("Title"); 
+            }
+            catch (Exception ex)
+            {
+                _log.Error(ex);
+            }
+            _log.Info("email: " + email + "; mailto: " + mailto + "; copies: " + copies + "; title: " + theme);
 
             /**
              * Чтение всех основных групп для выделения подходящей основной группы
@@ -718,6 +723,7 @@ namespace AnseremPackage
 
             ProcessSchemaParamCompanyFoundId = clientCompanyId;
             
+            _log.Info("clientVip: " + clientVip + "; clientVipPlatform: " + clientVipPlatform + "; clientCompanyId: " + clientCompanyId);
             AddAccountToEmail();
 
             // Найти основную ГО для контакта по компаниям и ВИП Платформа
@@ -825,14 +831,14 @@ namespace AnseremPackage
             }
 
             // Основная клиентская/ВИП Платформа
-            else if (extraServiceGroup == Guid.Empty)
+            if (extraServiceGroup == Guid.Empty)
             {
                 _log.Info("Main clients/vip platform");
                 goto5();
             }
 
             // Общая 1 линия поддержки
-            else if (extraServiceGroup != Guid.Empty && clientVip)
+            if (extraServiceGroup != Guid.Empty && clientVip)
             {
                 _log.Info("General first line of support");
                 selectedServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
@@ -1022,41 +1028,48 @@ namespace AnseremPackage
                 UPDATE " + 
                 "\"Case\" \n" + 
                 $@"SET 
-                OlpGroupServicesId = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', 
+                    OlpGroupServicesId = '{OLP_GENERAL_FIRST_LINE_SUPPORT}', 
                     OlpSupportLineId = '{OLP_OR_FIRST_LINE_SUPPORT}',
                     OlpImportantId = '{CASE_IMPORTANCY_NOT_IMPOTANT}',
                     OlpUrgencyId = '{CASE_URGENCY_TYPE_NOT_URGENT}',
                     CategoryId = '{caseCategory}'
                 WHERE 
                     Id = '{caseId}'";
-            _log.Info(sql);
-            CustomQuery query = new CustomQuery(_userConnection, sql);
-            query.Execute();
+            try
+            {
+                CustomQuery query = new CustomQuery(_userConnection, sql);
+                query.Execute();
+                _log.Info(sql);
+            }
+            catch (Exception ex)
+            {
+                _log.Error(ex);
+            }
         }
 
         public Activity GetParentActivityFromCase()
         {
             try
             {
-            _log.Info("GetParentActivityFromCase");
-            var activity = new Activity(_userConnection);
-            Dictionary<string, object> conditions = new Dictionary<string, object> {
-                { nameof(Activity.Id), contactId },
-                { nameof(Activity.TypeId), ACTIVITY_TYPE_EMAIL } 
-            };
+                _log.Info("GetParentActivityFromCase");
+                var activity = new Activity(_userConnection);
+                Dictionary<string, object> conditions = new Dictionary<string, object> {
+                    { nameof(Activity.Id), parentActivityId},
+                    { nameof(Activity.Type), ACTIVITY_TYPE_EMAIL } 
+                };
 
-            if (activity.FetchFromDB(conditions))
-            {
-                _log.Info("Activity found");
-                return activity;
-            }
-            _log.Info("Activity NOT found");
-            return null;
+                if (activity.FetchFromDB(conditions))
+                {
+                    _log.Info("Activity found");
+                    return activity;
+                }
+                _log.Info("Activity NOT found");
             }
             catch (Exception ex)
             {
                 _log.Error(ex);
             }
+            return null;
         }
 
         // Найти дежурную группу по email в кому/копия
@@ -1069,8 +1082,8 @@ namespace AnseremPackage
                 string sql = $@"
                     SELECT * FROM OlpServiceGroup
                     WHERE Id IS NOT NULL AND
-                    OlpSgEmail IS NOT NULL AND
-                    OlpTypeGroupService = '{SERVICE_GROUP_TYPE_EXTRA}'";
+                    OlpSgEmailId IS NOT NULL AND
+                    OlpTypeGroupServiceId = '{SERVICE_GROUP_TYPE_EXTRA}'";
 
                 CustomQuery query = new CustomQuery(_userConnection, sql);
 
@@ -1087,9 +1100,9 @@ namespace AnseremPackage
                             string EmailBoxName = "";
                             string EmailBoxALias = "";
 
-                            var ExtraGroupId = reader.GetColumnValue<Guid>("ExtraGroupId");
+                            var ExtraGroupId = reader.GetColumnValue<Guid>("Id");
 
-                            var ExtraEmailBox = reader.GetColumnValue<Guid>("ExtraGroupEmailBoxId");
+                            var ExtraEmailBox = reader.GetColumnValue<Guid>("OlpSgEmailId");
 
                             //ищем текстовое значение ящика по ГО
                             EntitySchemaQuery ExtraEmailBoxString = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
@@ -1174,8 +1187,8 @@ namespace AnseremPackage
                 string sql = $@"
                     SELECT * FROM OlpServiceGroup
                     WHERE Id IS NOT NULL AND
-                    OlpSgEmail IS NOT NULL AND
-                    OlpTypeGroupService = '{SERVICE_GROUP_TYPE_MAIN}'"; 
+                    OlpSgEmailId IS NOT NULL AND
+                    OlpTypeGroupServiceId = '{SERVICE_GROUP_TYPE_MAIN}'"; 
 
                 CustomQuery query = new CustomQuery(_userConnection, sql);
 
@@ -1193,10 +1206,10 @@ namespace AnseremPackage
                             string EmailBoxALias = "";
 
                             // Ид.ГО
-                            Guid MainGroupId = reader.GetColumnValue<Guid>("MainGroupId");
+                            Guid MainGroupId = reader.GetColumnValue<Guid>("Id");
 
                             // Ид.почтового ящика основной группы
-                            Guid MainGroupEmailBoxId = reader.GetColumnValue<Guid>("MainGroupEmailBoxId");
+                            Guid MainGroupEmailBoxId = reader.GetColumnValue<Guid>("OlpSgEmailId");
 
                             //ищем текстовое значение ящика по ГО
                             EntitySchemaQuery EsqEmailBoxString = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "MailboxForIncidentRegistration");
@@ -1287,30 +1300,28 @@ namespace AnseremPackage
 
             try
             {
-                var title = activity.GetTypedColumnValue<string>("Title");
+                var theme = activity.GetTypedColumnValue<string>("Title");
                 var body = activity.GetTypedColumnValue<string>("Body");
-            
-                _log.Info("title: " + title + "; body: " + body);
-                
+
+                _log.Info("theme: " + theme + "; body: " + body);
+
                 var themetravel = "";
-                if (!string.IsNullOrEmpty(title))
+                if (!string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("TRAVEL-"))
                 {
-                    if (!string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("TRAVEL-"))
+
+                    var regex = new Regex(@"(?<=TRAVEL-)\d+");
+
+                    foreach (Match match in regex.Matches(theme))
                     {
-
-                        var regex = new Regex(@"(?<=TRAVEL-)\d+");
-
-                        foreach (Match match in regex.Matches(theme))
+                        themetravel = match.Value.ToString();
+                        if(!string.IsNullOrEmpty(themetravel))
                         {
-                            themetravel = match.Value.ToString();
-                            if(!string.IsNullOrEmpty(themetravel))
-                            {
-                                themetravel = "TRAVEL-" + themetravel;
-                                break;
-                            }
+                            themetravel = "TRAVEL-" + themetravel;
+                            break;
                         }
                     }
                 }
+
 
                 if (string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(body) && body.ToUpper().Contains("TRAVEL-"))
                 {
@@ -1331,21 +1342,23 @@ namespace AnseremPackage
 
 
                 string sql1 = $@"
-                    UPDATE 
-                        Case 
-                    SET 
-                        OlpReloThemeSibur = '{themetravel}',
+                    UPDATE " + 
+                        "\"Case\" \n" + 
+                    $@"SET 
+                        OlpReloThemeSibur = '{themetravel}'
                     WHERE 
                         id = '{caseId}'";
                     
                 string sql2 = $@"
-                    UPDATE 
-                        Case
-                    SET 
-                        OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
+                    UPDATE " + 
+                        "\"Case\" \n" + 
+                    $@"SET 
+                        OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно'
                     WHERE 
                         statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
+
+                _log.Info("SQL1: " + sql1 + "\n SQL2: " + sql2);
                 CustomQuery query1 = new CustomQuery(_userConnection, sql1);
                 query1.Execute();
 
@@ -1364,50 +1377,51 @@ namespace AnseremPackage
             _log.Info("SetSiburParameter");
             try
             {
-                var title = activity.GetTypedColumnValue<string>("Title");
+                var theme = activity.GetTypedColumnValue<string>("Title");
                 var body = activity.GetTypedColumnValue<string>("Body");
 
-                _log.Info("title: " + title + "; body: " + body);
-                
-                var themetravel = "";
-                if (!string.IsNullOrEmpty(title))
-                {
-                    if(string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("ЗАЯВКА ПО РЕЛОКАЦИИ_")) 
-                    {
+                _log.Info("theme: " + theme + "; body: " + body);
 
-                        var regexurgent = new Regex(@"(?<=Заявка по релокации_)\[(.+)\]");
-                        foreach (Match match in regexurgent.Matches(theme))
+                var themetravel = "";
+
+                if(string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("ЗАЯВКА ПО РЕЛОКАЦИИ_")) 
+                {
+
+                    var regexurgent = new Regex(@"(?<=Заявка по релокации_)\[(.+)\]");
+                    foreach (Match match in regexurgent.Matches(theme))
+                    {
+                        themetravel = match.Value.ToString();
+                        if(!string.IsNullOrEmpty(themetravel))
                         {
-                            themetravel = match.Value.ToString();
-                            if(!string.IsNullOrEmpty(themetravel))
-                            {
-                                themetravel = "Заявка по релокации_" + themetravel;
-                                break;
-                            }
+                            themetravel = "Заявка по релокации_" + themetravel;
+                            break;
                         }
                     }
                 }
-                
-                string sql1 = $@" 
-                    UPDATE 
-                        Case 
-                    SET 
-                        OlpReloThemeSibur = '{themetravel}',
+
+
+                string sql1 = $@"
+                    UPDATE " + 
+                        "\"Case\" \n" + 
+                    $@"SET 
+                        OlpReloThemeSibur = '{themetravel}'
                     WHERE 
                         id = '{caseId}'";
                     
-                string sql2 = $@"
-                    UPDATE 
-                        Case
-                    SET 
-                        OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно',
+               string sql2 = $@"
+                    UPDATE " + 
+                        "\"Case\" \n" + 
+                    $@"SET 
+                        OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно'
                     WHERE 
                         statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
-                CustomQuery query1 = new CustomQuery(_userConnection, sql1);
-                CustomQuery query2 = new CustomQuery(_userConnection, sql2);
-                query1.Execute();
-                query2.Execute();
+               _log.Info("SQL1: " + sql1 + "\n SQL2: " + sql2);
+
+               CustomQuery query1 = new CustomQuery(_userConnection, sql1);
+               CustomQuery query2 = new CustomQuery(_userConnection, sql2);
+               query1.Execute();
+               query2.Execute();
             }
             catch (Exception e)
             {
@@ -1604,13 +1618,13 @@ namespace AnseremPackage
         {
             _log.Info("GetHoldingFromAccountBindedToEis");
             
-            var contactId = contact.GetTypedColumnValue<Guid>("Id");
+            // var contactId = contact.GetTypedColumnValue<Guid>("Id");
 
             string sql = $@"
                 SELECT OlpHoldingId FROM Contact c 
                 INNER JOIN Account a ON a.Id = c.AccountId
                 WHERE c.Id = '{contactId}'";
-
+            _log.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
 
             using (var db = _userConnection.EnsureDBConnection())
@@ -1619,10 +1633,12 @@ namespace AnseremPackage
                 {
                     if (reader.Read())
                     {
+                        _log.Info("Holding found: " + reader.GetColumnValue<Guid>("OlpHoldingId"));
                         return reader.GetColumnValue<Guid>("OlpHoldingId");
                     }
                 }
             }
+            _log.Info("Holding NOT found");
             return Guid.Empty;
         }
 
@@ -1642,30 +1658,44 @@ namespace AnseremPackage
 
         public void AddAccountToEmail()
         {
-            _log.Info("AddAccountToEmail");
-            string sql = $@"
-                UPDATE 
-                    Activity
-                SET 
-                    Account = '{clientCompanyId}', 
-                WHERE 
-                    Id = '{parentActivityId}'";
-
-            CustomQuery query = new CustomQuery(_userConnection, sql);
-            query.Execute();
+            try
+            {
+                _log.Info("AddAccountToEmail");
+                string sql = $@"
+                    UPDATE 
+                        Activity
+                    SET 
+                        AccountId = '{clientCompanyId}' 
+                    WHERE 
+                        Id = '{parentActivityId}'";
+                _log.Info(sql);
+                CustomQuery query = new CustomQuery(_userConnection, sql);
+                query.Execute();
+            }
+            catch (Exception ex)
+            {
+                _log.Error(ex);
+            }
         }
 
         public OlpServiceGroup GetServiceGroupBySelectedId()
         {
-            _log.Info("GetServiceGroupBySelectedId");
-            var serviceGroup = new OlpServiceGroup(_userConnection);
-            Dictionary<string, object> conditions = new Dictionary<string, object> {
-                // { nameof(Account.Id), selectedServiceGroupId}, // TODO
-            };
-
-            if (serviceGroup.FetchFromDB(conditions))
+            try
             {
-                return serviceGroup;
+                _log.Info("GetServiceGroupBySelectedId");
+                var serviceGroup = new OlpServiceGroup(_userConnection);
+                Dictionary<string, object> conditions = new Dictionary<string, object> {
+                    { nameof(Account.Id), selectedServiceGroupId},
+                };
+                _log.Info("selectedServiceGroupId: " + selectedServiceGroupId);
+                if (serviceGroup.FetchFromDB(conditions))
+                {
+                    return serviceGroup;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Error(ex);
             }
             return null;
         }
@@ -1714,7 +1744,7 @@ namespace AnseremPackage
                 esq.Filters.Add(orFilterGroup);
             }  
 
-            var list = new CompositeObjectList<CompositeObject>();
+            var list = new List<ServiceGroupElement>();
             EntityCollection entityCollection = esq.GetEntityCollection(_userConnection);
 
             //Идем в цикл если коллекция не пустая
@@ -1723,24 +1753,32 @@ namespace AnseremPackage
                 foreach (var servicegroups in entityCollection) 
                 {
 
-                    var item = new CompositeObject();
+                    var item = new ServiceGroupElement();
                     var servicegroupid = servicegroups.GetTypedColumnValue<Guid>("Id");
                     var servicegroupttid = servicegroups.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
                     var servicegrouptype = servicegroups.GetTypedColumnValue<string>(OlpTypeServiceGroup.Name);
 
-                    item["ProcessSchemaParameterServiceGroupId"] = servicegroupid;
-                    item["ProcessSchemaParamServiceTimeTableId"] = servicegroupttid;
+                    item._serviceGroupId = servicegroupid;
+                    item._timeTableId = servicegroupttid;
                     ServiceGroupForOrder = servicegroupid;
 
                     list.Add(item);
                 }
 
                 ProcessSchemaParameterServiceGroupCollection = list; 
+                StringBuilder sb = new StringBuilder();
+                foreach (var item in list)
+                {
+                    sb.Append("Item: " + item._serviceGroupId + "; " + item._timeTableId);
+                }
+                _log.Info(sb.ToString());
             }        
             else
             { 
+                _log.Info("ProcessSchemaParameterIsDutyGroup = true");
                 //Дежурная группа
                 ProcessSchemaParameterIsDutyGroup = true;
+                isExtraServiceGroup = true; // TODO
             }
 
             /**LEGACY**/
@@ -1758,12 +1796,9 @@ namespace AnseremPackage
 
             foreach (var item in servicegrouplist)
             {
-                Guid ServiceGroupId = Guid.Empty;
-                string ServiceTimeTableId = "";
-                if (item.TryGetValue<string>("ProcessSchemaParamServiceTimeTableId", out ServiceTimeTableId)) { continue; };
-                if (item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId", out ServiceGroupId)) { continue; };
-
-
+                Guid ServiceGroupId = item._serviceGroupId;
+                string ServiceTimeTableId = item._timeTableId;
+                _log.Info("SGI: " + ServiceGroupId + "; ServiceTimeTableId: " + ServiceTimeTableId);
                 if (ServiceTimeTableId == "Круглосуточно")
                 {
                     ServiceGroupIdTemp = ServiceGroupId;
@@ -1890,6 +1925,7 @@ namespace AnseremPackage
             else 
             {
                 ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                selectedServiceGroupId = ServiceGroupIdTemp;
             }
 
             return;
@@ -1902,141 +1938,147 @@ namespace AnseremPackage
         {
             /**LEGACY**/
             _log.Info("GetMainServiceGroupBasedOnTimetableOlpFirstStage");
-         
-            DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
-            var servicegrouplist = ProcessSchemaParameterServiceGroupCollection;
-            var ServiceGroupIdTemp = System.Guid.Empty;
 
-
-            foreach (var item in servicegrouplist) 
+            try
             {
-                string ServiceTimeTableId = "";
-                Guid ServiceGroupId = Guid.Empty;
-                
-                if (item.TryGetValue<string>("ProcessSchemaParamServiceTimeTableId", out ServiceTimeTableId)) { continue; };
-                if (item.TryGetValue<Guid>("ProcessSchemaParameterServiceGroupId", out ServiceGroupId)) { continue; };
+                _log.Info("is collection null: " + (ProcessSchemaParameterServiceGroupCollection == null));
+                DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
+                var servicegrouplist = ProcessSchemaParameterServiceGroupCollection;
+                var ServiceGroupIdTemp = Guid.Empty;
 
-                if (ServiceTimeTableId == "Круглосуточно")
+
+                foreach (var item in servicegrouplist) 
                 {
-                    ServiceGroupIdTemp = ServiceGroupId;
-                    break;
-                }
+                    string ServiceTimeTableId = item._timeTableId;
+                    Guid ServiceGroupId = item._serviceGroupId;
 
-                //Приоритетная проверка по Праздничным-выходным дням
-                EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
-                EsqHoliday.PrimaryQueryColumn.IsAlwaysSelect = true;
-                EsqHoliday.ChunkSize = 1;
-                EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
-                // Найти График в праздничные дни
-                EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.LessOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow));
-                EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeTo", DateTime.UtcNow));
-                EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Выходной"));
-
-
-                EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(_userConnection);
-                //Есть выходной-праздничный день перейти к следующей ГО
-                if (CollectionHoliday.IsNotEmpty())
-                {
-                    continue;
-                }
-
-                //Приоритетная проверка по Праздничным-рабочим дням
-                EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
-                EsqHolidayWork.PrimaryQueryColumn.IsAlwaysSelect = true;
-                EsqHolidayWork.ChunkSize = 1;
-                // Найти График в праздничные дни
-                EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.LessOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow));
-                EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeTo", DateTime.UtcNow));
-                EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
-                EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
-
-                EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(_userConnection);
-                //Есть рабочий-праздничный день записать ГО и выйти из цикла
-                if (CollectionHolidayWork.IsNotEmpty())
-                {
-                    foreach (var itemholidaywork in CollectionHolidayWork) 
+                    _log.Info("ServiceGroupId: " + ServiceGroupId + "; ServiceTimeTableId: " + ServiceTimeTableId);
+                    if (ServiceTimeTableId == "Круглосуточно")
                     {
-                        ServiceGroupIdTemp = itemholidaywork.GetTypedColumnValue<Guid>("Id");
-                    }
-                    
-                    if (ServiceGroupIdTemp != Guid.Empty)
-                    {
+                        ServiceGroupIdTemp = ServiceGroupId;
                         break;
                     }
-                }
 
-                //Приоритетная проверка по Праздничным-рабочим дням - есть ли они на текущую дату?
-                EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
-                EsqHolidayWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
-                EsqHolidayWorkDate.ChunkSize = 1;
-                EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow.Date));
-                EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Less, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeTo", DateTime.UtcNow.Date.AddDays(1)));
-                EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
-                EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
+                    //Приоритетная проверка по Праздничным-выходным дням
+                    EntitySchemaQuery EsqHoliday = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
+                    EsqHoliday.PrimaryQueryColumn.IsAlwaysSelect = true;
+                    EsqHoliday.ChunkSize = 1;
+                    EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
+                    // Найти График в праздничные дни
+                    EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.LessOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow));
+                    EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeTo", DateTime.UtcNow));
+                    EsqHoliday.Filters.Add(EsqHoliday.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Выходной"));
 
-                EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(_userConnection);
-                //Есть рабочий-праздничный день записать ГО и выйти из цикла
-                if (CollectionHolidayWorkDate.IsNotEmpty())
-                {
-                    continue;
-                }
 
-                //можно смотреть по стандартному графику
-                EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
-                EsqStandartWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
-                EsqStandartWorkDate.ChunkSize = 2;
-
-                var WeekDayColumn = EsqStandartWorkDate.AddColumn("[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code");
-                var TimeFromColumn = EsqStandartWorkDate.AddColumn("[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpTimeFrom");
-                var TimeToColumn = EsqStandartWorkDate.AddColumn("[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpTimeTo");
-                var orFilterGroup = new EntitySchemaQueryFilterCollection(EsqStandartWorkDate, LogicalOperationStrict.Or);
-
-                EsqStandartWorkDate.Filters.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpTypeDay.Name", "Рабочий")); // тип рабочего дня выходной/рабочий
-                EsqStandartWorkDate.Filters.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
-
-                orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.DayOfWeek.ToString())); // день недели день недели -1
-                orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.AddDays(-1).DayOfWeek.ToString())); // день недели день недели -1
-                EsqStandartWorkDate.Filters.Add(orFilterGroup);
-
-                EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(_userConnection);
-
-                if (CollectionStandartWorkDate.IsNotEmpty()) 
-                {
-                    foreach (var itemstandartwork in CollectionStandartWorkDate)
+                    EntityCollection CollectionHoliday = EsqHoliday.GetEntityCollection(_userConnection);
+                    //Есть выходной-праздничный день перейти к следующей ГО
+                    if (CollectionHoliday.IsNotEmpty())
                     {
+                        continue;
+                    }
 
-                        var WeekDay  = itemstandartwork.GetTypedColumnValue<string>(WeekDayColumn.Name);
-                        var TimeFrom = itemstandartwork.GetTypedColumnValue<DateTime>(TimeFromColumn.Name);
-                        var TimeTo   = itemstandartwork.GetTypedColumnValue<DateTime>(TimeToColumn.Name);
+                    //Приоритетная проверка по Праздничным-рабочим дням
+                    EntitySchemaQuery EsqHolidayWork = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
+                    EsqHolidayWork.PrimaryQueryColumn.IsAlwaysSelect = true;
+                    EsqHolidayWork.ChunkSize = 1;
+                    // Найти График в праздничные дни
+                    EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.LessOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow));
+                    EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeTo", DateTime.UtcNow));
+                    EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
+                    EsqHolidayWork.Filters.Add(EsqHolidayWork.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
 
-                        if (TimeFrom >= TimeTo) {TimeTo = TimeTo.AddDays(1);}
-                        if (WeekDay != DateTime.UtcNow.AddHours(3).Date.DayOfWeek.ToString()){TimeFrom = TimeFrom.AddDays(-1);TimeTo = TimeTo.AddDays(-1);}
-
-                        // Подходит ли основной график ГО
-                        if (CurrentDayTime>TimeFrom && CurrentDayTime < TimeTo)
+                    EntityCollection CollectionHolidayWork = EsqHolidayWork.GetEntityCollection(_userConnection);
+                    //Есть рабочий-праздничный день записать ГО и выйти из цикла
+                    if (CollectionHolidayWork.IsNotEmpty())
+                    {
+                        foreach (var itemholidaywork in CollectionHolidayWork) 
                         {
-                            ServiceGroupIdTemp = itemstandartwork.GetTypedColumnValue<Guid>("Id");
+                            ServiceGroupIdTemp = itemholidaywork.GetTypedColumnValue<Guid>("Id");
+                        }
+
+                        if (ServiceGroupIdTemp != Guid.Empty)
+                        {
                             break;
                         }
                     }
-                    if (ServiceGroupIdTemp != Guid.Empty)
+
+                    //Приоритетная проверка по Праздничным-рабочим дням - есть ли они на текущую дату?
+                    EntitySchemaQuery EsqHolidayWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
+                    EsqHolidayWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
+                    EsqHolidayWorkDate.ChunkSize = 1;
+                    EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.GreaterOrEqual, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeFrom", DateTime.UtcNow.Date));
+                    EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Less, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpDatetimeTo", DateTime.UtcNow.Date.AddDays(1)));
+                    EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpHolidayException:OlpServiceGroupHolidaysDetail:Id].OlpTypeDay.Name", "Рабочий"));
+                    EsqHolidayWorkDate.Filters.Add(EsqHolidayWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
+
+                    EntityCollection CollectionHolidayWorkDate = EsqHolidayWorkDate.GetEntityCollection(_userConnection);
+                    //Есть рабочий-праздничный день записать ГО и выйти из цикла
+                    if (CollectionHolidayWorkDate.IsNotEmpty())
                     {
-                        break;
+                        continue;
+                    }
+
+                    //можно смотреть по стандартному графику
+                    EntitySchemaQuery EsqStandartWorkDate = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "OlpServiceGroup");
+                    EsqStandartWorkDate.PrimaryQueryColumn.IsAlwaysSelect = true;
+                    EsqStandartWorkDate.ChunkSize = 2;
+
+                    var WeekDayColumn = EsqStandartWorkDate.AddColumn("[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code");
+                    var TimeFromColumn = EsqStandartWorkDate.AddColumn("[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpTimeFrom");
+                    var TimeToColumn = EsqStandartWorkDate.AddColumn("[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpTimeTo");
+                    var orFilterGroup = new EntitySchemaQueryFilterCollection(EsqStandartWorkDate, LogicalOperationStrict.Or);
+
+                    EsqStandartWorkDate.Filters.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpTypeDay.Name", "Рабочий")); // тип рабочего дня выходной/рабочий
+                    EsqStandartWorkDate.Filters.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "Id", ServiceGroupId));
+
+                    orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.DayOfWeek.ToString())); // день недели день недели -1
+                    orFilterGroup.Add(EsqStandartWorkDate.CreateFilterWithParameters(FilterComparisonType.Equal, "[OlpServiceGroupWork:OlpServiceGroupWorkSched:Id].OlpWeekDay.Code", DateTime.UtcNow.AddHours(3).Date.AddDays(-1).DayOfWeek.ToString())); // день недели день недели -1
+                    EsqStandartWorkDate.Filters.Add(orFilterGroup);
+
+                    EntityCollection CollectionStandartWorkDate = EsqStandartWorkDate.GetEntityCollection(_userConnection);
+
+                    if (CollectionStandartWorkDate.IsNotEmpty()) 
+                    {
+                        foreach (var itemstandartwork in CollectionStandartWorkDate)
+                        {
+
+                            var WeekDay  = itemstandartwork.GetTypedColumnValue<string>(WeekDayColumn.Name);
+                            var TimeFrom = itemstandartwork.GetTypedColumnValue<DateTime>(TimeFromColumn.Name);
+                            var TimeTo   = itemstandartwork.GetTypedColumnValue<DateTime>(TimeToColumn.Name);
+
+                            if (TimeFrom >= TimeTo) {TimeTo = TimeTo.AddDays(1);}
+                            if (WeekDay != DateTime.UtcNow.AddHours(3).Date.DayOfWeek.ToString()){TimeFrom = TimeFrom.AddDays(-1);TimeTo = TimeTo.AddDays(-1);}
+
+                            // Подходит ли основной график ГО
+                            if (CurrentDayTime>TimeFrom && CurrentDayTime < TimeTo)
+                            {
+                                ServiceGroupIdTemp = itemstandartwork.GetTypedColumnValue<Guid>("Id");
+                                break;
+                            }
+                        }
+                        if (ServiceGroupIdTemp != Guid.Empty)
+                        {
+                            break;
+                        }
                     }
                 }
-            }
 
-            if (ServiceGroupIdTemp == Guid.Empty)
-            {
-                //дежурная группа 
-                ProcessSchemaParameterIsDutyGroup = true;
+                if (ServiceGroupIdTemp == Guid.Empty)
+                {
+                    //дежурная группа 
+                    ProcessSchemaParameterIsDutyGroup = true;
+                }
+                else 
+                {
+                    ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                    selectedServiceGroupId = ServiceGroupIdTemp;
+                    ProcessSchemaParameterIsDutyGroup = false;
+                }
             }
-            else 
+            catch (Exception ex)
             {
-                ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
-                ProcessSchemaParameterIsDutyGroup = false;
+                _log.Error(ex);
             }
-
             return;
          
             /**LEGACY**/
@@ -2102,6 +2144,7 @@ namespace AnseremPackage
             {
                 ServiceGroupIdTemp = ServiceGroupId;
                 ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                selectedServiceGroupId = ServiceGroupIdTemp;
                 ProcessSchemaParameterIsDutyGroup = false;
                 return;
             }
@@ -2121,6 +2164,7 @@ namespace AnseremPackage
             if (CollectionHoliday.IsNotEmpty())
             {
                 ProcessSchemaParamServiceGroupId = ServiceGroupId;
+                selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                 ProcessSchemaParameterIsDutyGroup = true;
                 ServiceGroupForOrder = ServiceGroupId;
                 return ;
@@ -2148,6 +2192,7 @@ namespace AnseremPackage
                 if (ServiceGroupIdTemp != Guid.Empty)
                 {
                     ProcessSchemaParamServiceGroupId =  ServiceGroupIdTemp;
+                    selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                     ProcessSchemaParameterIsDutyGroup  = false;
                     return;
                 }
@@ -2167,6 +2212,7 @@ namespace AnseremPackage
             if (CollectionHolidayWorkDate.IsNotEmpty())
             {
                 ProcessSchemaParamServiceGroupId = ServiceGroupId;
+                selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                 ProcessSchemaParameterIsDutyGroup = true;
                 ServiceGroupForOrder = ServiceGroupId;
                 return;
@@ -2221,6 +2267,7 @@ namespace AnseremPackage
                 if (ServiceGroupIdTemp != Guid.Empty)
                 {
                     ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                    selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                     ProcessSchemaParameterIsDutyGroup = false;
                 }
             }
@@ -2230,6 +2277,7 @@ namespace AnseremPackage
             {
                 //дежурная группа
                 ProcessSchemaParamServiceGroupId = ServiceGroupId;
+                selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                 ProcessSchemaParameterIsDutyGroup = true;
                 ServiceGroupForOrder = ServiceGroupId;
             }
@@ -2252,6 +2300,7 @@ namespace AnseremPackage
             {
                 ServiceGroupIdTemp = ServiceGroupId;
                 ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                 ProcessSchemaParameterIsDutyGroup = false;
                 return;
             }
@@ -2296,6 +2345,7 @@ namespace AnseremPackage
                 if (ServiceGroupIdTemp != Guid.Empty)
                 {
                     ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                    selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                     ProcessSchemaParameterIsDutyGroup = false;
                     return;
                 }
@@ -2366,6 +2416,7 @@ namespace AnseremPackage
                 if (ServiceGroupIdTemp != Guid.Empty)
                 {
                     ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                    selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                     ProcessSchemaParameterIsDutyGroup = false;
                 }
             }
@@ -2416,6 +2467,7 @@ namespace AnseremPackage
             {
                 ServiceGroupIdTemp = ServiceGroupId;
                 ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                 ProcessSchemaParameterIsDutyGroup = false;
                 return;
             }
@@ -2461,6 +2513,7 @@ namespace AnseremPackage
                 if (ServiceGroupIdTemp != Guid.Empty)
                 {
                     ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
+                    selectedServiceGroupId = ProcessSchemaParamServiceGroupId;
                     ProcessSchemaParameterIsDutyGroup = false;
                     return;
                 }
@@ -2778,6 +2831,7 @@ namespace AnseremPackage
                 {
                     var servicegroupid = servicegroups.GetTypedColumnValue<Guid>("Id");
                     ProcessSchemaParamServiceGroupId = servicegroupid;
+                    selectedServiceGroupId = servicegroupid;
                     ProcessSchemaParameterIsDutyGroup = false;
                 }
             }       
@@ -2991,6 +3045,12 @@ namespace AnseremPackage
         }
     }
 
+    public class ServiceGroupElement
+    {
+        public Guid _serviceGroupId { get; set; }
+        public string _timeTableId { get; set; }
+    }
+
     public class Profile
     {
         public int Id { get; set; }
@@ -3035,7 +3095,7 @@ namespace AnseremPackage
     {
         public string ServiceNumber { get; set; }
         public string OrderNumber { get; set; }
-        public string JourneyNumber { get; set; }
+        pblic string JourneyNumber { get; set; }
         public string TripNumber { get; set; }
     }
     
@@ -3082,5 +3142,4 @@ namespace AnseremPackage
     }
     
 }
-  
 
