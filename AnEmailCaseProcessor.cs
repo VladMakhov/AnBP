@@ -465,10 +465,10 @@ namespace AnseremPackage
         
 		public Entity _case { get; set; }
 
-        public override void OnInserting(object sender, EntityBeforeEventArgs e)
+        public override void OnInserted(object sender, EntityAfterEventArgs e)
         {
  			_log.Info("\n\nSTART");
- 			base.OnInserting(sender, e);
+ 			base.OnInserted(sender, e);
             _case = (Entity)sender;
            
             // DEFAULT: Новая командировка/Изменение командировки
@@ -627,6 +627,8 @@ namespace AnseremPackage
                 _log.Info("Yes, client or spam");
                 EisPath();
             }
+            _log.Info("DONE");
+            return;
         }
 
         public void EisPath()
@@ -759,14 +761,14 @@ namespace AnseremPackage
                 _log.Info("Which service group to set");
 
                 // Указана только дежурная в кому/копии
-                if (mainServiceGroup == Guid.Empty && ExtraGroupIdByEmail != Guid.Empty && isExtraServiceGroup) // Разобраться с параметрами
+                if (MainGroupIdByEmail == Guid.Empty && ExtraGroupIdByEmail != Guid.Empty && isExtraServiceGroup)
                 {
                     _log.Info("Only duty group was in to/copy");
                     goto5();
                 }
 
                 // Найдена ГО по компании и графику клиента и почтовому адресу
-                else if (extraServiceGroup == Guid.Empty)
+                if (!isExtraServiceGroup)
                 {
                     _log.Info("Service group was found by company and timetable and email addres");
                     SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
@@ -775,7 +777,7 @@ namespace AnseremPackage
                 }
 
                 // Указана осн ГО в кому/копии
-                else if (mainServiceGroup == Guid.Empty && isExtraServiceGroup)
+                if (mainServiceGroup == Guid.Empty && isExtraServiceGroup)
                 {
                     _log.Info("Main service group in to/copy");
 
@@ -785,7 +787,7 @@ namespace AnseremPackage
                     {
                         goto5();
                     }
-                    else if (selectedServiceGroupId != Guid.Empty && extraServiceGroup == Guid.Empty)
+                    if (selectedServiceGroupId != Guid.Empty && extraServiceGroup == Guid.Empty)
                     {
                         goto6();
                     }
@@ -809,14 +811,14 @@ namespace AnseremPackage
                 else
                 {
                     goto7();
+                    return;
                 }
             }
-
-            // Нет
-            else 
+            else // Нет 
             {
                 goto4();
             }
+            return;
         }
 
         public void goto4()
@@ -935,7 +937,6 @@ namespace AnseremPackage
         public void goto7()
         {
             _log.Info("goto7");
-            return;
             // if (isResponseSuccessful)
             // {
             //     
@@ -1339,31 +1340,35 @@ namespace AnseremPackage
                     }
 
                 }
-
-
-                string sql1 = $@"
-                    UPDATE " + 
+                 
+                if (!string.IsNullOrEmpty(themetravel))
+                {
+                    string sql1 = $@"
+                        UPDATE " + 
                         "\"Case\" \n" + 
-                    $@"SET 
-                        OlpReloThemeSibur = '{themetravel}'
-                    WHERE 
+                        $@"SET 
+                        OlpTRAVELNumber = '{themetravel}'
+                        WHERE 
                         id = '{caseId}'";
+
+                    _log.Info("SQL1: " + sql1);
+                    CustomQuery query1 = new CustomQuery(_userConnection, sql1);
+                    query1.Execute();
                     
-                string sql2 = $@"
-                    UPDATE " + 
+                    string sql2 = $@"
+                        UPDATE " + 
                         "\"Case\" \n" + 
-                    $@"SET 
+                        $@"SET 
                         OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно'
-                    WHERE 
+                        WHERE 
                         statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
+                    _log.Info("SQL2: " + sql2);
+                    CustomQuery query2 = new CustomQuery(_userConnection, sql2);
+                    query2.Execute();
+                }
 
-                _log.Info("SQL1: " + sql1 + "\n SQL2: " + sql2);
-                CustomQuery query1 = new CustomQuery(_userConnection, sql1);
-                query1.Execute();
-
-                CustomQuery query2 = new CustomQuery(_userConnection, sql2);
-                query2.Execute();
+                
             }
             catch (Exception e)
             {
@@ -1400,28 +1405,34 @@ namespace AnseremPackage
                 }
 
 
-                string sql1 = $@"
-                    UPDATE " + 
+                if (!string.IsNullOrEmpty(themetravel))
+                {
+                    string sql1 = $@"
+                        UPDATE " + 
                         "\"Case\" \n" + 
-                    $@"SET 
+                        $@"SET 
                         OlpReloThemeSibur = '{themetravel}'
-                    WHERE 
+                        WHERE 
                         id = '{caseId}'";
-                    
-               string sql2 = $@"
-                    UPDATE " + 
+
+                    CustomQuery query1 = new CustomQuery(_userConnection, sql1);
+                    query1.Execute();
+                    _log.Info("SQL1: " + sql1);
+                
+                    string sql2 = $@"
+                        UPDATE " + 
                         "\"Case\" \n" + 
-                    $@"SET 
-                        OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно'
-                    WHERE 
+                        $@"SET 
+                        OlpReloThemeSibur = '{themetravel}_Закрыто/Отмененно'
+                        WHERE 
                         statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
-               _log.Info("SQL1: " + sql1 + "\n SQL2: " + sql2);
 
-               CustomQuery query1 = new CustomQuery(_userConnection, sql1);
-               CustomQuery query2 = new CustomQuery(_userConnection, sql2);
-               query1.Execute();
-               query2.Execute();
+                    _log.Info("SQL2: " + sql2);
+                    CustomQuery query2 = new CustomQuery(_userConnection, sql2);
+                    query2.Execute();
+                }
+
             }
             catch (Exception e)
             {
@@ -2062,17 +2073,19 @@ namespace AnseremPackage
                         }
                     }
                 }
-
+                _log.Info("ServiceGroupIdTemp == Guid.Empty: " + (ServiceGroupIdTemp == Guid.Empty));
                 if (ServiceGroupIdTemp == Guid.Empty)
                 {
                     //дежурная группа 
                     ProcessSchemaParameterIsDutyGroup = true;
+                    isExtraServiceGroup = true; // TODO
                 }
                 else 
                 {
                     ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
                     selectedServiceGroupId = ServiceGroupIdTemp;
                     ProcessSchemaParameterIsDutyGroup = false;
+                    _log.Info("selectedServiceGroupId: " + selectedServiceGroupId);
                 }
             }
             catch (Exception ex)
@@ -3095,7 +3108,7 @@ namespace AnseremPackage
     {
         public string ServiceNumber { get; set; }
         public string OrderNumber { get; set; }
-        pblic string JourneyNumber { get; set; }
+        public string JourneyNumber { get; set; }
         public string TripNumber { get; set; }
     }
     
@@ -3142,4 +3155,6 @@ namespace AnseremPackage
     }
     
 }
+  
+
 
