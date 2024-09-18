@@ -289,11 +289,14 @@ namespace AnseremPackage
     using System.Runtime; 
     using System.Runtime.Serialization;
     using System.Runtime.Serialization.Json;
+    using System.Net.Http;
+    using Newtonsoft.Json;
+
 
     [EntityEventListener(SchemaName = nameof(Case))]
     public class AnEmailCaseProcessor: BaseEntityEventListener
     { 
-        public static readonly ILog _log = LogManager.GetLogger("EmailCaseProcessor");
+        public static readonly ILog logger = LogManager.GetLogger("EmailCaseProcessor");
 
         /**CONSTS**/
         public UserConnection _userConnection { get; set; }
@@ -406,6 +409,8 @@ namespace AnseremPackage
         
         public string sender { get; set; }
         
+        public string initialSender { get; set; }
+        
         public string copies { get; set; }
         
         public string mailto { get; set; }
@@ -471,7 +476,7 @@ namespace AnseremPackage
 
         public override void OnInserted(object sender, EntityAfterEventArgs e)
         {
-            _log.Info("\n\n-------------------------------START---------------------------------------------");
+            logger.Info("\n\n-------------------------------START---------------------------------------------");
             base.OnInserted(sender, e);
             _case = (Entity)sender;
             try
@@ -481,7 +486,7 @@ namespace AnseremPackage
                 DutyForCase = new Guid("007fc788-5edd-42dd-a9ac-c56d010e7205");
 
                 caseId = _case.GetTypedColumnValue<Guid>("Id");
-                _log.Info("Case id: " + caseId);
+                logger.Info("Case id: " + caseId);
 
                 // Чтение карточки контакта из обращения
                 isOlpFirstStage = true;
@@ -491,27 +496,31 @@ namespace AnseremPackage
                 contactId = _case.GetTypedColumnValue<Guid>("ContactId");
                 contact = ReadContactFromCase(contactId);
 
-                _log.Info("Contact id: " +  contactId);
+                ContactIdForEmailAndPhone = contact.GetTypedColumnValue<Guid>("Id");
+
+                logger.Info("Contact id: " +  contactId);
 
                 // Нет (СПАМ) - 2 ЭТАП
                 if (contact.GetTypedColumnValue<Guid>("TypeId") == CONTACT_TYPE_UNDEFINED_CLIENT_SPAM) 
                 {
-                    _log.Info("Contact is spam, type is client not found or spam");
+                    logger.Info("Contact is spam, type is client not found or spam");
 
                     // Спам на обращении + 1 линия поддержки
                     UpdateCaseToFirstLineSupport();
-                    _log.Info("END");
+                    logger.Info("END");
                     return;
                 }
 
                 parentActivityId = _case.GetTypedColumnValue<Guid>("ParentActivityId");
-                _log.Info("Parent activity id: " + parentActivityId);
+                logger.Info("Parent activity id: " + parentActivityId);
 
                 // email родительской активности
                 activity = GetParentActivityFromCase();
                 try
                 {
                     this.sender = activity.GetTypedColumnValue<string>("Sender");
+
+                    this.initialSender = this.sender;
 
                     mailto = activity.GetTypedColumnValue<string>("Recepient"); 
 
@@ -521,12 +530,12 @@ namespace AnseremPackage
                 }
                 catch (Exception ex)
                 {
-                    _log.Error(ex);
+                    logger.Error(ex);
                 }
-                _log.Info("Sender: " + this.sender);
-                _log.Info("Mail to: " + mailto);
-                _log.Info("Copies: " + copies);
-                _log.Info("title: " + title);
+                logger.Info("Sender: " + this.sender);
+                logger.Info("Mail to: " + mailto);
+                logger.Info("Copies: " + copies);
+                logger.Info("title: " + title);
 
                 /**
                  * Чтение всех основных групп для выделения подходящей основной группы
@@ -565,7 +574,7 @@ namespace AnseremPackage
                             )
                         )
                 {
-                    _log.Info("Employee, second stage");
+                    logger.Info("Employee, second stage");
 
                     caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER; 
                     /**
@@ -573,7 +582,7 @@ namespace AnseremPackage
                      * Выставить 1 линию поддержки
                      */
                     UpdateCaseToFirstLineSupport();
-                    _log.Info("DONE 1");
+                    logger.Info("DONE 1");
                     return;
                 }
 
@@ -585,7 +594,7 @@ namespace AnseremPackage
                             )
                    )
                 {
-                    _log.Info("First stage, Employee or supplier");
+                    logger.Info("First stage, Employee or supplier");
 
                     caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                     goto2();
@@ -597,26 +606,26 @@ namespace AnseremPackage
                         contact.GetTypedColumnValue<Guid>("TypeId") == Guid.Empty
                    )
                 {
-                    _log.Info("Not, new");
+                    logger.Info("Not, new");
 
                     account = FetchAccountById(GetAccountIdFromAccountCommunication());
 
                     // Да (Поставщик)
                     if (account != null && account.GetTypedColumnValue<Guid>("TypeId") == ACCOUNT_TYPE_SUPPLIER)
                     {
-                        _log.Info("Yes, supplier");
+                        logger.Info("Yes, supplier");
 
                         caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
                         SetContactType(contact.GetTypedColumnValue<Guid>("Id"), CONTACT_TYPE_SUPPLIER);
                         if (isOlpFirstStage)
                         {
-                            _log.Info("OlpFirstStage");
+                            logger.Info("OlpFirstStage");
 
                             goto2();
                         }
                         else
                         {
-                            _log.Info("Not OlpFirstStage");
+                            logger.Info("Not OlpFirstStage");
                             UpdateCaseToFirstLineSupport();
                         }
                     }
@@ -627,7 +636,7 @@ namespace AnseremPackage
                             account.GetTypedColumnValue<Guid>("TypeId") == ACCOUNT_TYPE_OUR_COMPANY
                        )
                     {
-                        _log.Info("Yes, aerolcub");
+                        logger.Info("Yes, aerolcub");
 
                         caseCategory = CASE_CATEGORY_EMPLOYEE_SUPPLIER;
 
@@ -635,12 +644,12 @@ namespace AnseremPackage
 
                         if (isOlpFirstStage)
                         {
-                            _log.Info("OlpFirstStage");
+                            logger.Info("OlpFirstStage");
                             goto2();
                         }
                         else
                         {
-                            _log.Info("Not OlpFirstStage");
+                            logger.Info("Not OlpFirstStage");
                             UpdateCaseToFirstLineSupport();
                         }
                     }
@@ -658,15 +667,15 @@ namespace AnseremPackage
                         )
                    )
                 {
-                    _log.Info("Yes, client or spam");
+                    logger.Info("Yes, client or spam");
                     EisPath();
                 }
             }
             catch (Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
-            _log.Info("DONE");
+            logger.Info("DONE");
             return;
         }
 
@@ -674,8 +683,8 @@ namespace AnseremPackage
         {
             try
             {
-                isResponseSuccessful = SendEisRequest();
-                _log.Info("isResponseSuccessful: " + isResponseSuccessful);
+                isResponseSuccessful = SendEisRequest().Result;
+                logger.Info("isResponseSuccessful: " + isResponseSuccessful);
                 // Да
                 if (
                         isResponseSuccessful || 
@@ -685,16 +694,24 @@ namespace AnseremPackage
                         )
                    )
                 {
-                    _log.Info("EISpath: Yes");
+                    logger.Info("EISpath: Yes");
+                    account = FetchAccountByEis(int.Parse(eis.Company.Id));
 
-                    account = FetchAccountByEis(new Guid(eis.Company.Id));
+                    try
+                    {
+                        logger.Info(account.GetTypedColumnValue<Guid>("Id"));
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex);
+                    }
 
                     RefreshEmailsAndPhones();
 
                     // RefreshContact(account.GetTypedColumnValue<Guid>("Id"), contact.GetTypedColumnValue<Guid>("Id"));
                     RefreshContact();
 
-                    holding = account.GetTypedColumnValue<Guid>("OlpHolding");
+                    holding = account.GetTypedColumnValue<Guid>("OlpHoldingId");
 
                     // Чтение карточки контакта после обновления
                     ReadContactAfterRefreshing();
@@ -710,19 +727,19 @@ namespace AnseremPackage
                         )
                    )
                 {
-                    _log.Info("EISpath: Not by domain, not by eis and empty or spam");
+                    logger.Info("EISpath: Not by domain, not by eis and empty or spam");
 
                     // категория СПАМ
                     caseCategory = CONTACT_TYPE_UNDEFINED_CLIENT_SPAM;
                     if (isOlpFirstStage)
                     {
-                        _log.Info("OlpFirstStage");
+                        logger.Info("OlpFirstStage");
                         SetSpamOnCase();
                         goto2();
                     }
                     else
                     {
-                        _log.Info("Not OlpFirstStage");
+                        logger.Info("Not OlpFirstStage");
                         SetSpamOnCase();   
                         return;
                     }
@@ -732,7 +749,7 @@ namespace AnseremPackage
                 // Да
                 if (contact.GetTypedColumnValue<Guid>("AccountId") != Guid.Empty)
                 {
-                    _log.Info("Not by eis: Yes");
+                    logger.Info("Not by eis: Yes");
 
                     // Актуализировать тип контакта + Email 
                     RefreshContactTypeAndEmail();
@@ -740,7 +757,7 @@ namespace AnseremPackage
                 // Нет
                 else
                 {
-                    _log.Info("Not by eis: Not");
+                    logger.Info("Not by eis: Not");
                     // Актуализировать компанию контакта + Email
                     RefreshContactCompanyAndEmail();
                 }
@@ -749,13 +766,13 @@ namespace AnseremPackage
             }
             catch (Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
         }
 
         public void goto2()
         {
-            _log.Info("goto2");
+            logger.Info("goto2");
 
             // Найти данные компании привязанной к контакту ненайденного в ЕИС
             // Выставить холдинг компании контакта
@@ -772,7 +789,7 @@ namespace AnseremPackage
          */
         public void ReadContactAfterRefreshing()
         {
-            _log.Info("ReadContactAfterRefreshing");
+            logger.Info("ReadContactAfterRefreshing");
 
             GetContactAfterRefreshing(contact.GetTypedColumnValue<Guid>("Id"));
 
@@ -784,13 +801,13 @@ namespace AnseremPackage
 
             ProcessSchemaParamCompanyFoundId = clientCompanyId;
             
-            _log.Info("clientVip: " + clientVip + "; clientVipPlatform: " + clientVipPlatform + "; clientCompanyId: " + clientCompanyId);
+            logger.Info("clientVip: " + clientVip + "; clientVipPlatform: " + clientVipPlatform + "; clientCompanyId: " + clientCompanyId);
             AddAccountToEmail();
 
             // Найти основную ГО для контакта по компаниям и ВИП Платформа
             GetMainServiceGroup();
 
-            _log.Info("Is service group found by company vip platform");
+            logger.Info("Is service group found by company vip platform");
             // Найдена ли группа по компании ВИП Платформа?
             // Да
             if (
@@ -800,7 +817,7 @@ namespace AnseremPackage
                     isOlpFirstStage == false
                )
             {
-                _log.Info("Yes");
+                logger.Info("Yes");
 
                 // Найти ГО основную по графику работы 
                 GetMainServiceGroupBasedOnTimetable(); 
@@ -810,22 +827,22 @@ namespace AnseremPackage
             // Этап 1
             if (isOlpFirstStage)
             {
-                _log.Info("First stage");
+                logger.Info("First stage");
 
                 // Есть ГО
                 // if (!isExtraServiceGroup)
                 if (ProcessSchemaParameterIsDutyGroup == false)
                 {
-                    _log.Info("Service group is found");
+                    logger.Info("Service group is found");
 
                     // Найти ГО  основную по графику работы 1 этап
                     GetMainServiceGroupBasedOnTimetableOlpFirstStage(); 
                 }
 
                 // Какую ГО установить?
-                _log.Info("Which service group to set");
+                logger.Info("Which service group to set");
 
-                _log.Info("MainGroupIdByEmail: " + MainGroupIdByEmail + "; ExtraGroupIdByEmail: " + ExtraGroupIdByEmail + "; isExtraServiceGroup: " + ProcessSchemaParameterIsDutyGroup);
+                logger.Info("MainGroupIdByEmail: " + MainGroupIdByEmail + "; ExtraGroupIdByEmail: " + ExtraGroupIdByEmail + "; isExtraServiceGroup: " + ProcessSchemaParameterIsDutyGroup);
                 
                 // Указана только дежурная в кому/копии
                 if (
@@ -834,14 +851,14 @@ namespace AnseremPackage
                         ProcessSchemaParameterIsDutyGroup == true
                    )
                 {
-                    _log.Info("Only duty group was in to/copy");
+                    logger.Info("Only duty group was in to/copy");
                     goto5();
                 }
 
                 // Найдена ГО по компании и графику клиента и почтовому адресу
                 if (ProcessSchemaParameterIsDutyGroup == false)
                 {
-                    _log.Info("Service group was found by company and timetable and email addres");
+                    logger.Info("Service group was found by company and timetable and email addres");
                     SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                     SetAutonotification();
                     goto6();
@@ -850,7 +867,7 @@ namespace AnseremPackage
                 // Указана осн ГО в кому/копии
                 if (MainGroupIdByEmail == Guid.Empty && ProcessSchemaParameterIsDutyGroup == true)
                 {
-                    _log.Info("Main service group in to/copy");
+                    logger.Info("Main service group in to/copy");
 
                     // Найти осн из почты по графику
                     GetMainServiceGroupFromMainBasedOnTimeTable(); 
@@ -911,11 +928,11 @@ namespace AnseremPackage
 
         public void goto4()
         {
-            _log.Info("goto4");
+            logger.Info("goto4");
             // Дежурная ГО 2 линия поддержки
             if (ProcessSchemaParameterIsDutyGroup == true && ProcessSchemaParamClientFoundIsVIP == true)
             {
-                _log.Info("Duty group second line of support");
+                logger.Info("Duty group second line of support");
                 ProcessSchemaParamServiceGroupId = OLP_DUTY_SERVICE_GROUP;
                 goto5();
             }
@@ -923,23 +940,24 @@ namespace AnseremPackage
             // Основная клиентская/ВИП Платформа
             if (ProcessSchemaParameterIsDutyGroup == false)
             {
-                _log.Info("Main clients/vip platform");
+                logger.Info("Main clients/vip platform");
                 goto5();
             }
 
             // Общая 1 линия поддержки
             if (ProcessSchemaParameterIsDutyGroup == true && ProcessSchemaParamClientFoundIsVIP == false)
             {
-                _log.Info("General first line of support");
+                logger.Info("General first line of support");
                 ProcessSchemaParamServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
                 SetFirstLineSupport();
                 goto7();
+                return;
             }
         }
 
         public void goto5()
         {
-            _log.Info("goto5");
+            logger.Info("goto5");
 
             // Найти ГО дежурную из кому/копии по графику работы
             GetExtraServiceGroupFromFromAndCopyBaseOnTimetable();
@@ -948,23 +966,25 @@ namespace AnseremPackage
             if (ProcessSchemaParamServiceGroupId != Guid.Empty)
             {
                 goto6();
+                return;
             }
             else
             {
                 // Найти основную ГО для контакта по компаниям
                 GetMainServiceGroupForContactBasedOnCompany(); 
-                _log.Info("selectedServiceGroupId: " + ProcessSchemaParamServiceGroupId + "; ExtraGroupIdByEmail: " + ExtraGroupIdByEmail);
+                logger.Info("selectedServiceGroupId: " + ProcessSchemaParamServiceGroupId + "; ExtraGroupIdByEmail: " + ExtraGroupIdByEmail);
                 ProcessSchemaParamServiceGroupId = ProcessSchemaParamServiceGroupId == Guid.Empty ? ExtraGroupIdByEmail : ProcessSchemaParamServiceGroupId;
                 
                 SendBookAutoreply(); // TODO Переделать под кастомные автоответы!
                 SetAutonotification();
                 goto6();
+                return;
             }
         }
 
         public void goto6()
         {
-            _log.Info("goto6");
+            logger.Info("goto6");
 
             var serviceGroup = GetServiceGroupBySelectedId();
 
@@ -975,6 +995,7 @@ namespace AnseremPackage
                 DutyForCase = CASE_IMPORTANCY_IMPOTANT;
                 SetSecondLineSupport();
                 goto7();
+                return;
             }
 
             // Клиент явдяется ВИП
@@ -994,6 +1015,7 @@ namespace AnseremPackage
                 }
                 SetSecondLineSupport();
                 goto7();
+                return;
             }
 
             // Найти 1 линию поддержки для обращения
@@ -1002,21 +1024,24 @@ namespace AnseremPackage
             if (activity.GetTypedColumnValue<Guid>("PriorityId") == ACTIVITY_PRIORITY_HIGH)
             {
                 DutyForCase = CASE_IMPORTANCY_IMPOTANT;
-                _log.Info("importancy : " + DutyForCase);
+                logger.Info("importancy : " + DutyForCase);
             }
 
             if (firstLineSupport != Guid.Empty)
             {
                 SetSecondLineSupport();
                 goto7();
+                return;
             }
             if (firstLineSupport == Guid.Empty && isOlpFirstStage)
             {
                 ProcessSchemaParamServiceGroupId = OLP_GENERAL_FIRST_LINE_SUPPORT;
-                _log.Info("selectedServiceGroupId: " + ProcessSchemaParamServiceGroupId);
+                logger.Info("selectedServiceGroupId: " + ProcessSchemaParamServiceGroupId);
                 SetFirstLineSupport();
                 goto7();
+                return;
             }
+            return;
         }
 
         /**
@@ -1024,7 +1049,8 @@ namespace AnseremPackage
          * */
         public void goto7()
         {
-            _log.Info("goto7");
+            logger.Info("goto7");
+            return;
             // if (isResponseSuccessful)
             // {
             //     
@@ -1079,7 +1105,7 @@ namespace AnseremPackage
                         if (reader.Read())
                         {
                             var res = reader.GetColumnValue<bool>("BooleanValue");
-                            _log.Info("GetOlp: " + res);
+                            logger.Info("GetOlp: " + res);
                             return res;
                         }
                     }
@@ -1087,32 +1113,32 @@ namespace AnseremPackage
             }
             catch (Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
             return false;
         }
 
         public Contact ReadContactFromCase(Guid contId)
         {
-            _log.Info("ReadContactFromCase");
+            logger.Info("ReadContactFromCase");
 
             var contact = new Contact(_userConnection);
             Dictionary<string, object> conditions = new Dictionary<string, object> {
                 { nameof(Contact.Id), contId}, 
             };
-            _log.Info(contId);
+            logger.Info(contId);
             if (contact.FetchFromDB(conditions))
             {
-                _log.Info("Contact found");
+                logger.Info("Contact found");
                 return contact;
             }
-            _log.Info("Contact is not found");
+            logger.Info("Contact is not found");
             return null;
         }
 
         public void UpdateCaseToFirstLineSupport()
         {
-            _log.Info("Update case to first line support");
+            logger.Info("Update case to first line support");
             string sql = $@"
                 UPDATE " + 
                 "\"Case\" \n" + 
@@ -1124,17 +1150,17 @@ namespace AnseremPackage
                                    CategoryId = '{caseCategory}'
                                        WHERE 
                                        Id = '{caseId}'";
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
-            _log.Info(sql);
+            logger.Info(sql);
         }
 
         public Activity GetParentActivityFromCase()
         {
             try
             {
-                _log.Info("GetParentActivityFromCase");
+                logger.Info("GetParentActivityFromCase");
                 var activity = new Activity(_userConnection);
                 Dictionary<string, object> conditions = new Dictionary<string, object> {
                     { nameof(Activity.Id), parentActivityId},
@@ -1143,14 +1169,14 @@ namespace AnseremPackage
 
                 if (activity.FetchFromDB(conditions))
                 {
-                    _log.Info("Activity found");
+                    logger.Info("Activity found");
                     return activity;
                 }
-                _log.Info("Activity NOT found");
+                logger.Info("Activity NOT found");
             }
             catch (Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
             return null;
         }
@@ -1159,7 +1185,7 @@ namespace AnseremPackage
         public void GetServiceGroupExtra()
         {
 
-            _log.Info("GetServiceGroupExtra");
+            logger.Info("GetServiceGroupExtra");
             try
             {
                 string sql = $@"
@@ -1167,7 +1193,7 @@ namespace AnseremPackage
                     WHERE Id IS NOT NULL AND
                     OlpSgEmailId IS NOT NULL AND
                     OlpTypeGroupServiceId = '{SERVICE_GROUP_TYPE_EXTRA}'";
-                _log.Info(sql);
+                logger.Info(sql);
                 CustomQuery query = new CustomQuery(_userConnection, sql);
 
                 using (var db = _userConnection.EnsureDBConnection())
@@ -1179,7 +1205,7 @@ namespace AnseremPackage
 
                         while (reader.Read())
                         {
-                            _log.Info("Collection is not empty");
+                            logger.Info("Collection is not empty");
                             /**LEGACY**/
                             string EmailBoxName = "";
                             string EmailBoxALias = "";
@@ -1187,7 +1213,7 @@ namespace AnseremPackage
                             string mailtofromparentcopy = copies;
 
                             var ExtraGroupId = reader.GetColumnValue<Guid>("Id");
-                            _log.Info("ESG ID: " + ExtraGroupId);
+                            logger.Info("ESG ID: " + ExtraGroupId);
                             var ExtraGroupEmailBoxId = reader.GetColumnValue<Guid>("OlpSgEmailId");
 
                             //ищем текстовое значение ящика по ГО
@@ -1213,9 +1239,9 @@ namespace AnseremPackage
                                         EmailBoxName = words[0];
                                     }
                                 
-                                    _log.Info("mailtofromparent: " + mailtofromparent + "; mailtofromparentcopy: " + mailtofromparentcopy);
-                                    _log.Info("EmailBoxName: " + EmailBoxName + "; EmailBoxALias: " + EmailBoxALias);
-                                    _log.Info(
+                                    logger.Info("mailtofromparent: " + mailtofromparent + "; mailtofromparentcopy: " + mailtofromparentcopy);
+                                    logger.Info("EmailBoxName: " + EmailBoxName + "; EmailBoxALias: " + EmailBoxALias);
+                                    logger.Info(
                                             "0 :" + !string.IsNullOrEmpty(EmailBoxALias) +
                                             "1: " + mailtofromparent.ToUpper().Contains(EmailBoxName.ToUpper().Trim()) +
                                             "2: " + mailtofromparent.ToUpper().Contains(EmailBoxALias.ToUpper().Trim()) +
@@ -1234,7 +1260,7 @@ namespace AnseremPackage
                                             )
                                        ) 
                                     { 
-                                        _log.Info("IF 1");
+                                        logger.Info("IF 1");
                                         ExtraGroupIdByEmail = ExtraGroupId;
                                         ExtraGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
                                         ExtraGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
@@ -1245,13 +1271,13 @@ namespace AnseremPackage
                                                 mailtofromparentcopy.ToUpper().Contains(EmailBoxName.ToUpper().Trim())
                                             )
                                     {
-                                        _log.Info("IF 2");
+                                        logger.Info("IF 2");
                                         ExtraGroupIdByEmail = ExtraGroupId;
                                         ExtraGroupEmailBox = itemsemail.GetTypedColumnValue<string>("Name");
                                         ExtraGroupEmailBoxId = itemsemail.GetTypedColumnValue<Guid>(MailboxSyncSettings.Name);
                                         ExtraGroupIdTemp = ExtraGroupId;
                                     }
-                                    _log.Info("ExtraGroupIdByEmail: " + ExtraGroupIdByEmail + "; ExtraGroupEmailBox: " + ExtraGroupEmailBox + "; ExtraGroupEmailBoxId: " + ExtraGroupEmailBoxId + "; ExtraGroupIdTemp: " + ExtraGroupIdTemp);
+                                    logger.Info("ExtraGroupIdByEmail: " + ExtraGroupIdByEmail + "; ExtraGroupEmailBox: " + ExtraGroupEmailBox + "; ExtraGroupEmailBoxId: " + ExtraGroupEmailBoxId + "; ExtraGroupIdTemp: " + ExtraGroupIdTemp);
                                 }
                             }
 
@@ -1270,7 +1296,7 @@ namespace AnseremPackage
                                     foreach (var groupsshedule in entityCollection) 
                                     {
                                         ExtraSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
-                                        _log.Info("ExtraSheduleTypeByMail: " + ExtraSheduleTypeByMail);
+                                        logger.Info("ExtraSheduleTypeByMail: " + ExtraSheduleTypeByMail);
                                         break;
                                     }
                                 }
@@ -1283,14 +1309,14 @@ namespace AnseremPackage
             /**LEGACY**/
             catch (Exception e)
             {
-                _log.Error("Exception at GetServiceGroupExtra: " + e);
+                logger.Error("Exception at GetServiceGroupExtra: " + e);
             }
         }
 
         // Найти основную группу по email в кому/копия
         public void GetServiceGroupMain()
         {
-            _log.Info("Get main service group");
+            logger.Info("Get main service group");
             try
             {
                 string sql = $@"
@@ -1298,7 +1324,7 @@ namespace AnseremPackage
                     WHERE Id IS NOT NULL AND
                     OlpSgEmailId IS NOT NULL AND
                     OlpTypeGroupServiceId = '{SERVICE_GROUP_TYPE_MAIN}'"; 
-                _log.Info(sql);
+                logger.Info(sql);
                 CustomQuery query = new CustomQuery(_userConnection, sql);
 
                 using (var db = _userConnection.EnsureDBConnection())
@@ -1317,7 +1343,7 @@ namespace AnseremPackage
                             string mailtofromparentcopy = copies;
                             // Ид.ГО
                             Guid MainGroupId = reader.GetColumnValue<Guid>("Id");
-                            _log.Info("SG ID: " + MainGroupId);
+                            logger.Info("SG ID: " + MainGroupId);
 
                             // Ид.почтового ящика основной группы
                             Guid MainGroupEmailBoxId = reader.GetColumnValue<Guid>("OlpSgEmailId");
@@ -1375,7 +1401,7 @@ namespace AnseremPackage
                                         MainGroupIdTemp = MainGroupId;
                                     }
                                 }
-                                _log.Info("MainGroupIdByEmail: " + MainGroupIdByEmail + "; MainGroupEmailBox: " + MainGroupEmailBox + "; MainGroupEmailBoxId: " + MainGroupEmailBoxId + "; MainEmailBoxIdForReg: " + MainEmailBoxIdForReg);
+                                logger.Info("MainGroupIdByEmail: " + MainGroupIdByEmail + "; MainGroupEmailBox: " + MainGroupEmailBox + "; MainGroupEmailBoxId: " + MainGroupEmailBoxId + "; MainEmailBoxIdForReg: " + MainEmailBoxIdForReg);
                             }
 
                             if (MainGroupIdTemp != Guid.Empty)
@@ -1395,7 +1421,7 @@ namespace AnseremPackage
                                     foreach (var groupsshedule in entityCollection) 
                                     {
                                         MainSheduleTypeByMail = groupsshedule.GetTypedColumnValue<string>(OlpTypeScheduleWorks.Name);
-                                        _log.Info("Main schedule type by mail: " + MainSheduleTypeByMail);
+                                        logger.Info("Main schedule type by mail: " + MainSheduleTypeByMail);
                                         break;
                                     }
                                 }
@@ -1407,7 +1433,7 @@ namespace AnseremPackage
             }
             catch (Exception e)
             {
-                _log.Error("Exception at GetServiceGroupMain: " + e);
+                logger.Error("Exception at GetServiceGroupMain: " + e);
             }
             /**LEGACY**/
         }
@@ -1415,14 +1441,14 @@ namespace AnseremPackage
         public void SetTravelParameter()
         {
 
-            _log.Info("Set travel");
+            logger.Info("Set travel");
 
             try
             {
                 var theme = activity.GetTypedColumnValue<string>("Title");
                 var body = activity.GetTypedColumnValue<string>("Body");
 
-                _log.Info("Theme: " + theme + "; Body: " + body);
+                logger.Info("Theme: " + theme + "; Body: " + body);
 
                 var themetravel = "";
                 if (!string.IsNullOrEmpty(theme) && theme.ToUpper().Contains("TRAVEL-"))
@@ -1469,7 +1495,7 @@ namespace AnseremPackage
                         WHERE 
                         id = '{caseId}'";
 
-                    _log.Info("SQL1: " + sql1);
+                    logger.Info("SQL1: " + sql1);
                     CustomQuery query1 = new CustomQuery(_userConnection, sql1);
                     query1.Execute();
                     
@@ -1481,7 +1507,7 @@ namespace AnseremPackage
                         WHERE 
                         statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
-                    _log.Info("SQL2: " + sql2);
+                    logger.Info("SQL2: " + sql2);
                     CustomQuery query2 = new CustomQuery(_userConnection, sql2);
                     query2.Execute();
                 }
@@ -1490,20 +1516,20 @@ namespace AnseremPackage
             }
             catch (Exception e)
             {
-                _log.Error("Exception at SetTravelParameter: " + e);
+                logger.Error("Exception at SetTravelParameter: " + e);
             }
 
         }
 
         public void SetSiburParameter()
         {
-            _log.Info("Set sibur");
+            logger.Info("Set sibur");
             try
             {
                 var theme = activity.GetTypedColumnValue<string>("Title");
                 var body = activity.GetTypedColumnValue<string>("Body");
 
-                _log.Info("Theme: " + theme + "; Body: " + body);
+                logger.Info("Theme: " + theme + "; Body: " + body);
 
                 var themetravel = "";
 
@@ -1533,7 +1559,7 @@ namespace AnseremPackage
 
                 CustomQuery query1 = new CustomQuery(_userConnection, sql1);
                 query1.Execute();
-                _log.Info("SQL1: " + sql1);
+                logger.Info("SQL1: " + sql1);
 
                 string sql2 = $@"
                     UPDATE " + 
@@ -1544,15 +1570,50 @@ namespace AnseremPackage
                     statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
 
 
-                _log.Info("SQL2: " + sql2);
+                logger.Info("SQL2: " + sql2);
                 CustomQuery query2 = new CustomQuery(_userConnection, sql2);
                 query2.Execute();
             }
             catch (Exception e)
             {
-                _log.Error("Exception at SetSiburParameter: " + e);
+                logger.Error("Exception at SetSiburParameter: " + e);
             }
 
+        }
+
+        public string GetEmailFromSender(string _sender)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+
+                string s = initialSender;
+                string d = initialSender;
+
+                string[] words = s.Split('<');
+                foreach (var wrd in words)
+                {
+                    sb.Append(wrd + " ");
+                }
+                string[] words1 = words[1].Split('>');
+                sb.Append("\n");
+                foreach (var wrd1 in words1)
+                {
+                    sb.Append(wrd1 + " ");
+                }
+                sb.Append("\n");
+                var sender1 = words1[0]; // TODO
+                sb.Append(sender1);
+
+                string[] wordd = d.Split('@');
+                logger.Info("Sender: " + sender1 + "; wordd[0], wordd[1]: " + wordd[0] + ", " +wordd[1]);
+                return sender1; 
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex);
+            }
+            return "";
         }
 
         public string GetDomainFromEmail()
@@ -1566,7 +1627,7 @@ namespace AnseremPackage
             sender = words1[0]; // TODO
 			
 			string[] wordd = d.Split('@');
-			_log.Info("Sender: " + sender + "; wordd[0], wordd[1]: " + wordd[0] + ", " +wordd[1]);
+			logger.Info("Sender: " + sender + "; wordd[0], wordd[1]: " + wordd[0] + ", " +wordd[1]);
             string[] res = wordd[1].Split('>');
             return res[0];
         }
@@ -1589,7 +1650,7 @@ namespace AnseremPackage
                  AND 
                  Number = '{sender}' 
                 )";
-            _log.Info(sql);
+            logger.Info(sql);
 
             CustomQuery query = new CustomQuery(_userConnection, sql);
 
@@ -1620,15 +1681,23 @@ namespace AnseremPackage
             return null;
         }
 
-        public Account FetchAccountByEis(Guid code)
+        public Account FetchAccountByEis(int code)
         {
-            var account = new Account(_userConnection);
-            Dictionary<string, object> conditions = new Dictionary<string, object> {
-                { nameof(Account.OlpCode), code},
-            };
+            try
+            {
+                var account = new Account(_userConnection);
+                Dictionary<string, object> conditions = new Dictionary<string, object> {
+                    { nameof(Account.OlpCode), code},
+                };
 
-            if (account.FetchFromDB(conditions))
-                return account;
+                if (account.FetchFromDB(conditions))
+                    return account;
+                return null;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex);
+            }
             return null;
         }
 
@@ -1643,7 +1712,7 @@ namespace AnseremPackage
                     TypeId = '{type}',
                     AccountId = '{companyIdTemp}'
                 WHERE id = '{_contactId}'";
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
@@ -1660,7 +1729,7 @@ namespace AnseremPackage
                 WHERE
                     Id = '{contactId}'";
 
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
@@ -1686,12 +1755,12 @@ namespace AnseremPackage
                     OlpSignVipPlatf = '{eis.IsVipOnPlatform}',
                     OlpIsAuthorizedPerson = '{eis.IsAuthorized}',
                     OlpIsContactPerson = '{eis.IsContactPerson}',
-                    Type = '{CONTACT_TYPE_CLIENT}',
+                    TypeId = '{CONTACT_TYPE_CLIENT}',
                     OlpExternalContId = '{eis.Id}' 
                 WHERE 
                     Id = '{contactId}'";
             
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
@@ -1723,13 +1792,13 @@ namespace AnseremPackage
                                   WHERE 
                                   Id = '{_contactId}'";
                 }
-                _log.Info(sql);
+                logger.Info(sql);
                 CustomQuery query = new CustomQuery(_userConnection, sql);
                 query.Execute();
             }
             catch (Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
                
         }
@@ -1745,7 +1814,7 @@ namespace AnseremPackage
                     TypeId = '{CONTACT_TYPE_CLIENT}'
                 WHERE 
                     Id = '{_contactId}'";
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
@@ -1756,7 +1825,7 @@ namespace AnseremPackage
                 SELECT OlpHoldingId FROM Contact c 
                 INNER JOIN Account a ON a.Id = c.AccountId
                 WHERE c.Id = '{contactId}'";
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
 
             using (var db = _userConnection.EnsureDBConnection())
@@ -1765,12 +1834,12 @@ namespace AnseremPackage
                 {
                     if (reader.Read())
                     {
-                        _log.Info("Holding found: " + reader.GetColumnValue<Guid>("OlpHoldingId"));
+                        logger.Info("Holding found: " + reader.GetColumnValue<Guid>("OlpHoldingId"));
                         return reader.GetColumnValue<Guid>("OlpHoldingId");
                     }
                 }
             }
-            _log.Info("Holding NOT found");
+            logger.Info("Holding NOT found");
             return Guid.Empty;
         }
 
@@ -1783,12 +1852,12 @@ namespace AnseremPackage
 
             if (updatedContact.FetchFromDB(conditions))
             {
-                _log.Info("Contact is updated"); 
+                logger.Info("Contact is updated"); 
                 contact =  updatedContact;
                 return;
             }
 
-            _log.Info("Contact is NOT updated"); 
+            logger.Info("Contact is NOT updated"); 
         }
 
         public void AddAccountToEmail()
@@ -1804,14 +1873,14 @@ namespace AnseremPackage
                         AccountId = '{ProcessSchemaParamCompanyFoundId}' 
                         WHERE 
                         Id = '{parentActivityId}'";
-                    _log.Info(sql);
+                    logger.Info(sql);
                     CustomQuery query = new CustomQuery(_userConnection, sql);
                     query.Execute();
                 }
             }
             catch (Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
         }
 
@@ -1825,14 +1894,14 @@ namespace AnseremPackage
                 };
                 if (serviceGroup.FetchFromDB(conditions))
                 {
-                    _log.Info("Servise group is found");
+                    logger.Info("Servise group is found");
                     return serviceGroup;
                 }
-                _log.Info("Servise group is NOT found");
+                logger.Info("Servise group is NOT found");
             }
             catch (Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
             return null;
         }
@@ -1840,7 +1909,7 @@ namespace AnseremPackage
         // Найти основную ГО для контакта по компаниям и ВИП Платформа
         public void GetMainServiceGroup()
         {
-            _log.Info("Get main service group");
+            logger.Info("Get main service group");
             /**LEGACY**/
 
             //Считать признак поиска в ЕИС
@@ -1908,11 +1977,11 @@ namespace AnseremPackage
                 {
                     sb.Append("Item: " + item._serviceGroupId + "; " + item._timeTableId);
                 }
-                _log.Info(sb.ToString());
+                logger.Info(sb.ToString());
             }        
             else
             { 
-                _log.Info("Duty group is selcted");
+                logger.Info("Duty group is selcted");
                 //Дежурная группа
                 ProcessSchemaParameterIsDutyGroup = true;
             }
@@ -1933,7 +2002,7 @@ namespace AnseremPackage
             {
                 Guid ServiceGroupId = item._serviceGroupId;
                 string ServiceTimeTableId = item._timeTableId;
-                _log.Info("Service group: " + ServiceGroupId + "; ServiceTimeTableId: " + ServiceTimeTableId);
+                logger.Info("Service group: " + ServiceGroupId + "; ServiceTimeTableId: " + ServiceTimeTableId);
                 if (ServiceTimeTableId == "Круглосуточно")
                 {
                     ServiceGroupIdTemp = ServiceGroupId;
@@ -2055,12 +2124,12 @@ namespace AnseremPackage
 
             if (ServiceGroupIdTemp == Guid.Empty){
                 //дежурная группа 
-                _log.Info("Duty group is selected");
+                logger.Info("Duty group is selected");
                 ProcessSchemaParameterIsDutyGroup = true;
             }
             else 
             {
-                _log.Info("Service group is selected");
+                logger.Info("Service group is selected");
                 ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
             }
 
@@ -2073,11 +2142,11 @@ namespace AnseremPackage
         public void GetMainServiceGroupBasedOnTimetableOlpFirstStage()
         {
             /**LEGACY**/
-            _log.Info("GetMainServiceGroupBasedOnTimetableOlpFirstStage");
+            logger.Info("GetMainServiceGroupBasedOnTimetableOlpFirstStage");
 
             try
             {
-                _log.Info("is collection null: " + (ProcessSchemaParameterServiceGroupCollection == null));
+                logger.Info("is collection null: " + (ProcessSchemaParameterServiceGroupCollection == null));
                 DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
                 var servicegrouplist = ProcessSchemaParameterServiceGroupCollection;
                 var ServiceGroupIdTemp = Guid.Empty;
@@ -2088,7 +2157,7 @@ namespace AnseremPackage
                     string ServiceTimeTableId = item._timeTableId;
                     Guid ServiceGroupId = item._serviceGroupId;
 
-                    _log.Info("ServiceGroupId: " + ServiceGroupId + "; ServiceTimeTableId: " + ServiceTimeTableId);
+                    logger.Info("ServiceGroupId: " + ServiceGroupId + "; ServiceTimeTableId: " + ServiceTimeTableId);
                     if (ServiceTimeTableId == "Круглосуточно")
                     {
                         ServiceGroupIdTemp = ServiceGroupId;
@@ -2198,7 +2267,7 @@ namespace AnseremPackage
                         }
                     }
                 }
-                _log.Info("ServiceGroupIdTemp == Guid.Empty: " + (ServiceGroupIdTemp == Guid.Empty));
+                logger.Info("ServiceGroupIdTemp == Guid.Empty: " + (ServiceGroupIdTemp == Guid.Empty));
                 if (ServiceGroupIdTemp == Guid.Empty)
                 {
                     //дежурная группа 
@@ -2208,12 +2277,12 @@ namespace AnseremPackage
                 {
                     ProcessSchemaParamServiceGroupId = ServiceGroupIdTemp;
                     ProcessSchemaParameterIsDutyGroup = false;
-                    _log.Info("selectedServiceGroupId: " + ProcessSchemaParamServiceGroupId);
+                    logger.Info("selectedServiceGroupId: " + ProcessSchemaParamServiceGroupId);
                 }
             }
             catch (Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
             return;
          
@@ -2223,7 +2292,7 @@ namespace AnseremPackage
         // Найти осн из почты по графику
         public void GetMainServiceGroupFromMainBasedOnTimeTable()
         {
-            _log.Info("GetMainServiceGroupFromMainBasedOnTimeTable");
+            logger.Info("GetMainServiceGroupFromMainBasedOnTimeTable");
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
 
             Guid ServiceGroupId = MainGroupIdByEmail;
@@ -2423,7 +2492,7 @@ namespace AnseremPackage
         // Найти ГО дежурную из кому/копии по графику работы
         public void GetExtraServiceGroupFromFromAndCopyBaseOnTimetable()
         {
-            _log.Info("GetExtraServiceGroupFromFromAndCopyBaseOnTimetable");
+            logger.Info("GetExtraServiceGroupFromFromAndCopyBaseOnTimetable");
             /**LEGACY**/
             
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
@@ -2572,7 +2641,7 @@ namespace AnseremPackage
         // Найти ГО дежурную по графику работы
         public void GetExtraServiceGroupBaseOnTimetable()
         {
-            _log.Info("GetExtraServiceGroupBaseOnTimetable");
+            logger.Info("GetExtraServiceGroupBaseOnTimetable");
             DateTime CurrentDayTime = DateTime.UtcNow.AddHours(3);
 
             Guid ServiceGroupId = OLP_DUTY_SERVICE_GROUP; 
@@ -2735,7 +2804,7 @@ namespace AnseremPackage
 
         public void SetFirstLineSupport()
         {
-            _log.Info("SetFirstLineSupport");
+            logger.Info("SetFirstLineSupport");
             try
             {
                 // string sql = $@"
@@ -2781,19 +2850,19 @@ namespace AnseremPackage
                                            Id = '{caseId}'";
 
                 }
-                _log.Info(sql);
+                logger.Info(sql);
                 CustomQuery query = new CustomQuery(_userConnection, sql);
                 query.Execute();
             }
             catch(Exception ex)
             {
-                _log.Error(ex);
+                logger.Error(ex);
             }
         }
 
         public void SetSecondLineSupport()
         {
-            _log.Info("SetSecondLineSupport");
+            logger.Info("SetSecondLineSupport");
             string sql = $@" 
                 UPDATE " + 
                     "\"Case\" \n" + 
@@ -2809,14 +2878,14 @@ namespace AnseremPackage
                 WHERE
                     Id = '{caseId}'";
     
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
         }
 
         public void SetThirdLineSupport()
         {
-            _log.Info("SetThirdLineSupport");
+            logger.Info("SetThirdLineSupport");
 
             string sql = $@"
                 UPDATE " + 
@@ -2832,7 +2901,7 @@ namespace AnseremPackage
                     OlpServiceGroupForOrderId = '{ServiceGroupForOrder}' 
                 WHERE 
                     Id = '{caseId}'";
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
             query.Execute();
  
@@ -2843,7 +2912,7 @@ namespace AnseremPackage
          * */
         public void SendBookAutoreply()
         {
-            _log.Info("SendBookAutoreply");
+            logger.Info("SendBookAutoreply");
             return;
         }
 
@@ -2852,7 +2921,7 @@ namespace AnseremPackage
          * */
         public void SetAutonotification()
         {
-            _log.Info("SetAutonotification");
+            logger.Info("SetAutonotification");
             return;
             // string sql = $@"
             //     UPDATE
@@ -2868,90 +2937,97 @@ namespace AnseremPackage
         public void RefreshEmailsAndPhones()
         {
 
-            _log.Info("RefreshEmailsAndPhones");
-
-            /**LEGACY**/
-
-            // обновление/добавление почты
-            var emailList = eis.Emails; 
-            var IdContact = contactId;
-
-            foreach (var item in emailList) 
+            try
             {
+                logger.Info("RefreshEmailsAndPhones");
 
-                var NameEmail = item.Address;
+                /**LEGACY**/
 
-                if (string.IsNullOrEmpty(NameEmail)) { continue; }	// если нет почты то идти на следующий
+                // обновление/добавление почты
+                var emailList = eis.Emails; 
+                var IdContact = contactId;
 
-
-                // Существует email?
-                EntitySchemaQuery EsqContact = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "ContactCommunication");
-                EsqContact.PrimaryQueryColumn.IsAlwaysSelect = true;
-                EsqContact.ChunkSize = 1;
-                EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "Contact", IdContact));
-                EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "Number", NameEmail));
-                EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "CommunicationType", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6")));
-                EntityCollection CollectionEmail = EsqContact.GetEntityCollection(_userConnection);
-
-                if (CollectionEmail.IsEmpty())
+                foreach (var item in emailList) 
                 {
-                    // continue;
-                    // Добавление почты контакту
-                    var emailContact = _userConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
-                    var entityemailContact = emailContact.CreateEntity(_userConnection);
 
-                    entityemailContact.UseAdminRights = false;
-                    entityemailContact.SetDefColumnValues();
-                    entityemailContact.SetColumnValue("ContactId", IdContact );
-                    entityemailContact.SetColumnValue("Number", NameEmail);
-                    entityemailContact.SetColumnValue("CommunicationTypeId", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6"));
-                    entityemailContact.Save();
+                    var NameEmail = item.Address;
+
+                    if (string.IsNullOrEmpty(NameEmail)) { continue; }	// если нет почты то идти на следующий
+
+
+                    // Существует email?
+                    EntitySchemaQuery EsqContact = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "ContactCommunication");
+                    EsqContact.PrimaryQueryColumn.IsAlwaysSelect = true;
+                    EsqContact.ChunkSize = 1;
+                    EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "Contact", IdContact));
+                    EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "Number", NameEmail));
+                    EsqContact.Filters.Add(EsqContact.CreateFilterWithParameters(FilterComparisonType.Equal, "CommunicationType", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6")));
+                    EntityCollection CollectionEmail = EsqContact.GetEntityCollection(_userConnection);
+
+                    if (CollectionEmail.IsEmpty())
+                    {
+                        // continue;
+                        // Добавление почты контакту
+                        var emailContact = _userConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
+                        var entityemailContact = emailContact.CreateEntity(_userConnection);
+
+                        entityemailContact.UseAdminRights = false;
+                        entityemailContact.SetDefColumnValues();
+                        entityemailContact.SetColumnValue("ContactId", IdContact );
+                        entityemailContact.SetColumnValue("Number", NameEmail);
+                        entityemailContact.SetColumnValue("CommunicationTypeId", Guid.Parse("ee1c85c3-cfcb-df11-9b2a-001d60e938c6"));
+                        entityemailContact.Save();
+                    }
+
                 }
 
+                // обновление/добавление телефона
+                var listPhone = eis.Phones;
+                var IdContact1 = ContactIdForEmailAndPhone; // TODO
+
+                foreach (var item1 in listPhone) 
+                {
+                    var NamePhone = item1.Number;
+                    var Kind = item1.Kind;
+
+                    if (string.IsNullOrEmpty(NamePhone)) { continue; }	// если нет телефона то идти на следующий
+
+                    var typeIdPhone = Guid.Empty;
+
+                    // найти тип телефона
+                    if (Kind == "mobile") { typeIdPhone = Guid.Parse("d4a2dc80-30ca-df11-9b2a-001d60e938c6"); }
+                    if (Kind == "work") { typeIdPhone = Guid.Parse("3dddb3cc-53ee-49c4-a71f-e9e257f59e49"); }
+                    if (Kind == "home") { typeIdPhone = Guid.Parse("0da6a26b-d7bc-df11-b00f-001d60e938c6"); } 
+                    if (string.IsNullOrEmpty(Kind)) { typeIdPhone = Guid.Parse("21c0d693-9a52-43fa-b7f1-c6d8b53975d4"); }
+
+                    // Существует телефон?
+                    EntitySchemaQuery EsqContactPhone = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "ContactCommunication");
+                    EsqContactPhone.PrimaryQueryColumn.IsAlwaysSelect = true;
+                    EsqContactPhone.ChunkSize = 1;
+                    EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "Contact", IdContact1));
+                    EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "Number", NamePhone));
+                    EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "CommunicationType", typeIdPhone));
+                    EntityCollection CollectionPhone = EsqContactPhone.GetEntityCollection(_userConnection);
+
+                    if (CollectionPhone.IsEmpty())
+                    {
+                        // Добавление почты контакту
+                        var phoneContact = _userConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
+                        var entityphoneContact = phoneContact.CreateEntity(_userConnection);
+
+                        entityphoneContact.UseAdminRights = false;
+                        entityphoneContact.SetDefColumnValues();
+                        entityphoneContact.SetColumnValue("ContactId", IdContact1 );
+                        entityphoneContact.SetColumnValue("Number", NamePhone);
+                        entityphoneContact.SetColumnValue("CommunicationTypeId", typeIdPhone);
+                        entityphoneContact.Save();
+                    }
+
+                }
             }
-
-            // обновление/добавление телефона
-            var listPhone = eis.Phones;
-            var IdContact1 = ContactIdForEmailAndPhone;
-
-            foreach (var item1 in listPhone) 
+            catch (Exception ex)
             {
-                var NamePhone = item1.Number;
-                var Kind = item1.Kind;
-
-                if (string.IsNullOrEmpty(NamePhone)) { continue; }	// если нет телефона то идти на следующий
-
-                var typeIdPhone = Guid.Empty;
-
-                // найти тип телефона
-                if (Kind == "mobile") { typeIdPhone = Guid.Parse("d4a2dc80-30ca-df11-9b2a-001d60e938c6"); }
-                if (Kind == "work") { typeIdPhone = Guid.Parse("3dddb3cc-53ee-49c4-a71f-e9e257f59e49"); }
-                if (Kind == "home") { typeIdPhone = Guid.Parse("0da6a26b-d7bc-df11-b00f-001d60e938c6"); } 
-                if (string.IsNullOrEmpty(Kind)) { typeIdPhone = Guid.Parse("21c0d693-9a52-43fa-b7f1-c6d8b53975d4"); }
-
-                // Существует телефон?
-                EntitySchemaQuery EsqContactPhone = new EntitySchemaQuery(_userConnection.EntitySchemaManager, "ContactCommunication");
-                EsqContactPhone.PrimaryQueryColumn.IsAlwaysSelect = true;
-                EsqContactPhone.ChunkSize = 1;
-                EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "Contact", IdContact1));
-                EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "Number", NamePhone));
-                EsqContactPhone.Filters.Add(EsqContactPhone.CreateFilterWithParameters(FilterComparisonType.Equal, "CommunicationType", typeIdPhone));
-                EntityCollection CollectionPhone = EsqContactPhone.GetEntityCollection(_userConnection);
-
-                if (CollectionPhone.IsEmpty())
-                {
-                    // Добавление почты контакту
-                    var phoneContact = _userConnection.EntitySchemaManager.GetInstanceByName("ContactCommunication");
-                    var entityphoneContact = phoneContact.CreateEntity(_userConnection);
-
-                    entityphoneContact.UseAdminRights = false;
-                    entityphoneContact.SetDefColumnValues();
-                    entityphoneContact.SetColumnValue("ContactId", IdContact1 );
-                    entityphoneContact.SetColumnValue("Number", NamePhone);
-                    entityphoneContact.SetColumnValue("CommunicationTypeId", typeIdPhone);
-                    entityphoneContact.Save();
-                }
-
+                logger.Error(ex);
             }
             return;
             /**LEGACY**/
@@ -2961,7 +3037,7 @@ namespace AnseremPackage
         public void GetMainServiceGroupForContactBasedOnCompany()
         {
             /**LEGACY**/
-            _log.Info("GetMainServiceGroupForContactBasedOnCompany");
+            logger.Info("GetMainServiceGroupForContactBasedOnCompany");
             
             //Считать признак поиска в ЕИС
             //Считать Ид. компании 
@@ -3019,7 +3095,7 @@ namespace AnseremPackage
 
         public bool GetLoadingCheck()
         {
-            _log.Info("GetLoadingCheck");
+            logger.Info("GetLoadingCheck");
 
             string sql = $@"
                 SELECT 
@@ -3048,7 +3124,7 @@ namespace AnseremPackage
 
         public void CollectServicesForInsertion()
         {
-            _log.Info("CollectServicesForInsertion");
+            logger.Info("CollectServicesForInsertion");
 
             var servicesList = eis.Services;
 
@@ -3122,7 +3198,7 @@ namespace AnseremPackage
         public Guid GetFirstLineSupport(Guid role)
         {
             
-            _log.Info("GetFirstLineSupport");
+            logger.Info("GetFirstLineSupport");
             string sql = $@"
                 SELECT 
                     sau.Id 
@@ -3136,7 +3212,7 @@ namespace AnseremPackage
                     suir.SysRoleId = '{role}'
                 AND
                     suir.SysRoleId = '{OLP_OR_FIRST_LINE_SUPPORT}'";
-            _log.Info(sql);
+            logger.Info(sql);
             CustomQuery query = new CustomQuery(_userConnection, sql);
 
             using (var db = _userConnection.EnsureDBConnection())
@@ -3154,7 +3230,7 @@ namespace AnseremPackage
 
         public Guid GetThirdLineSupport(Guid role)
         {
-            _log.Info("GetThirdLineSupport");
+            logger.Info("GetThirdLineSupport");
             string sql = $@"
                 SELECT 
                     sau.Id 
@@ -3170,7 +3246,7 @@ namespace AnseremPackage
                     suir.SysRoleId = '{OLP_OR_THIRD_LINE_SUPPORT}'
                 AND
                     sau.LoggedIn = 1;";
-            _log.Info(sql);
+            logger.Info(sql);
 
             CustomQuery query = new CustomQuery(_userConnection, sql);
 
@@ -3187,35 +3263,70 @@ namespace AnseremPackage
             return Guid.Empty; 
         }
 
-        public bool SendEisRequest()
+        public async Task<bool> SendEisRequest()
         {
-            _log.Info("SendEisRequest");
-            string id = "";
-            string phone = "";
-    
-            // Email here is 'email' from activity 
-            string url = $"http://services.aeroclub.int/bpmintegration/profiles/get-info?Id={id}&Email={sender}&Phone={phone}"; 
-            
             try
             {
-                using (WebClient client = new WebClient())
+                logger.Info("SendEisRequest");
+
+                string _email = "nikita.andrienko@aeroclub.ru";
+
+                string url = $"http://services.aeroclub.int/bpmintegration/profiles/get-info?Email={_email}"; 
+                logger.Info("url: " + url);
+
+                HttpClient client = new HttpClient();
+
+                HttpResponseMessage response = await client.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
                 {
-                    client.Encoding = Encoding.UTF8;
+                    string jsonResponse = await response.Content.ReadAsStringAsync();
 
-                    string responseBody = client.DownloadString(url);
+                    List<Profile> profiles = JsonConvert.DeserializeObject<List<Profile>>(jsonResponse);
 
-                    using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(responseBody)))
+                    if (profiles != null && profiles.Count > 0)
                     {
-                        var serializer = new DataContractJsonSerializer(typeof(Profile));
-                        eis = (Profile)serializer.ReadObject(ms);
+                        eis = profiles[0]; 
+                        logger.Info(eis.Id);
+                        logger.Info(eis.FirstName.English);
+                        logger.Info(eis.MiddleName.English);
+                        logger.Info(eis.LastName.English);
+                        logger.Info(eis.Company.Id);
                         return true;
                     }
                 }
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                return false;
+                logger.Error(ex);
             }
+            return false;
+
+            // try
+            // {
+            //     using (WebClient client = new WebClient())
+            //     {
+            //         client.Encoding = Encoding.UTF8;
+
+            //         string responseBody = client.DownloadString(url);
+
+            //         using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(responseBody)))
+            //         {
+            //             var serializer = new DataContractJsonSerializer(typeof(Profile));
+            //             eis = (Profile)serializer.ReadObject(ms);
+
+            //             var pr = new Profile();
+            //             logger.Info(pr.ProfileToString(eis));
+
+            //             return true;
+            //         }
+            //     }
+            // }
+            // catch (Exception e)
+            // {
+            //     logger.Error(e);
+            //     return false;
+            // }
         }
     }
 
@@ -3234,6 +3345,7 @@ namespace AnseremPackage
         public Name LastName { get; set; }
         
         public Name MiddleName { get; set; }
+
         public Company Company { get; set; }
         
         public DateTime DateOfBirth { get; set; }
@@ -3263,6 +3375,7 @@ namespace AnseremPackage
         public List<Service> Services { get; set; }
         
         public string OrderNumbCheck { get; set; }
+
     }
 
     public class Service
@@ -3316,7 +3429,4 @@ namespace AnseremPackage
     }
     
 }
-  
-
-
 
