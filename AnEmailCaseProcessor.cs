@@ -363,13 +363,13 @@ namespace AnseremPackage
                  * Добавить TRAVEL
                  * Поставить отменено на всех отмененных тревел обращениях 
                  */
-                // SetTravelParameter(); 
+                SetTravelParameter(); 
 
                 /**
                  * Добавить Релокация - СИБУР
                  * Поставить отменено на всех отмененных тревел обращениях - Копия 
                  */
-                // SetSiburParameter(); 
+                SetSiburParameter(); 
 
                 // Да (Сотрудник) - 2 ЭТАП
                 if (
@@ -1277,7 +1277,7 @@ namespace AnseremPackage
                 }
 
 
-                if (string.IsNullOrEmpty(themetravel) && !string.IsNullOrEmpty(body) && body.ToUpper().Contains("TRAVEL-"))
+                if (!string.IsNullOrEmpty(body) && body.ToUpper().Contains("TRAVEL-"))
                 {
 
                     var regex = new Regex(@"(?<=TRAVEL-)\d+");
@@ -1314,7 +1314,7 @@ namespace AnseremPackage
                         $@"SET 
                         OlpTRAVELNumber = '{themetravel}_Закрыто/Отмененно'
                         WHERE 
-                        statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
+                        (statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}') AND OlpTRAVELNumber = '{themetravel}'";
 
                     logger.Info("SQL2: " + sql2);
                     CustomQuery query2 = new CustomQuery(_userConnection, sql2);
@@ -1357,72 +1357,39 @@ namespace AnseremPackage
                     }
                 }
 
-
-                string sql1 = $@"
-                    UPDATE " +
-                    "\"Case\" \n" +
-                    $@"SET 
-                    OlpReloThemeSibur = '{themetravel}'
-                    WHERE 
-                    id = '{caseId}'";
-
-                CustomQuery query1 = new CustomQuery(_userConnection, sql1);
-                query1.Execute();
-                logger.Info("SQL1: " + sql1);
-
-                string sql2 = $@"
-                    UPDATE " +
-                    "\"Case\" \n" +
-                    $@"SET 
-                    OlpReloThemeSibur = '{themetravel}_Закрыто/Отмененно'
-                    WHERE 
-                    statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}'";
-
-
-                logger.Info("SQL2: " + sql2);
-                CustomQuery query2 = new CustomQuery(_userConnection, sql2);
-                query2.Execute();
-            }
-            catch (Exception e)
-            {
-                logger.Error("Exception at SetSiburParameter: " + e);
-            }
-
-        }
-
-        public string GetEmailFromSender(string _sender)
-        {
-            try
-            {
-                var sb = new StringBuilder();
-
-                string s = initialSender;
-                string d = initialSender;
-
-                string[] words = s.Split('<');
-                foreach (var wrd in words)
+                if (!string.IsNullOrEmpty(themetravel))
                 {
-                    sb.Append(wrd + " ");
-                }
-                string[] words1 = words[1].Split('>');
-                sb.Append("\n");
-                foreach (var wrd1 in words1)
-                {
-                    sb.Append(wrd1 + " ");
-                }
-                sb.Append("\n");
-                var sender1 = words1[0]; // TODO
-                sb.Append(sender1);
+                    string sql1 = $@"
+                        UPDATE " +
+                        "\"Case\" \n" +
+                        $@"SET 
+                        OlpReloThemeSibur = '{themetravel}'
+                        WHERE 
+                        id = '{caseId}'";
 
-                string[] wordd = d.Split('@');
-                logger.Info("Sender: " + sender1 + "; wordd[0], wordd[1]: " + wordd[0] + ", " + wordd[1]);
-                return sender1;
-            }
-            catch (Exception ex)
-            {
-                logger.Error(ex);
-            }
-            return "";
+                    CustomQuery query1 = new CustomQuery(_userConnection, sql1);
+                    query1.Execute();
+                    logger.Info("SQL1: " + sql1);
+
+                    string sql2 = $@"
+                        UPDATE " +
+                        "\"Case\" \n" +
+                        $@"SET 
+                        OlpReloThemeSibur = '{themetravel}_Закрыто/Отмененно'
+                        WHERE 
+                        (statusId = '{CASE_STATUS_CLOSED}' OR statusId = '{CASE_STATUS_CANCELED}') AND OlpReloThemeSibur = '{themetravel}'";
+
+
+                    logger.Info("SQL2: " + sql2);
+                    CustomQuery query2 = new CustomQuery(_userConnection, sql2);
+                    query2.Execute();
+                }
+           }
+           catch (Exception e)
+           {
+               logger.Error("Exception at SetSiburParameter: " + e);
+           }
+            
         }
 
         public string GetDomainFromEmail()
